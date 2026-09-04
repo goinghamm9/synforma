@@ -1,12 +1,14 @@
 "use client";
 import * as React from "react";
-import { BookOpen, ChevronDown, ChevronRight, ExternalLink, FlaskConical, Lightbulb } from "lucide-react";
-import { Badge, Button } from "@/components/ui";
+import { BookOpen, ChevronDown, ChevronRight, ExternalLink, FlaskConical, Lightbulb, MoonStar } from "lucide-react";
+import { Badge, Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { evaluateIntervention } from "@/lib/synforma/engine/adoption";
+import { FRICTION_LABEL, FRICTION_SHORT } from "@/lib/synforma/engine/friction";
 import { CITATION_BY_ID } from "@/lib/synforma/science/citations";
 import { BARRIER_LABEL, BARRIER_SHORT, EVIDENCE_LABEL, TECHNIQUE_BY_ID } from "@/lib/synforma/science/techniques";
 import { cn, formatPercent } from "@/lib/utils";
-import type { Hypothesis, Intervention, InterventionScore, Program, Run } from "@/lib/synforma/types";
+import type { Hypothesis, Intervention, InterventionScore, Program, Run, RunEvent } from "@/lib/synforma/types";
+import { summarizeDecisions } from "../decisions";
 import { EmptyState, ModeBadge, Note, PanelHeader } from "../bits";
 
 interface Props {
@@ -14,6 +16,8 @@ interface Props {
   interventions: Intervention[];
   hypotheses: Record<string, Hypothesis>;
   runs: Run[];
+  /** Program events: the source of the decision accounting (do-nothing vs interventions). */
+  events?: RunEvent[];
   onGoGuide: () => void;
 }
 
@@ -32,6 +36,69 @@ function ScoreBar({ value, penalty }: { value: number; penalty?: boolean }) {
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
       <div className={cn("h-full", penalty ? "bg-signal/70" : "bg-ink")} style={{ width: `${pct}%` }} />
     </div>
+  );
+}
+
+function FrictionStateBadge({ state }: { state: NonNullable<Hypothesis["frictionState"]> }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex cursor-default items-center gap-1 rounded-full border border-line-strong bg-surface px-2 py-px text-[11px] text-graphite" data-testid="friction-state" data-state={state}>
+          <span className="text-slate">Observed state</span>
+          <span className="font-medium text-ink">{FRICTION_SHORT[state]}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{FRICTION_LABEL[state]}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** How often the policy chose to stay quiet versus intervene, from stored events only. */
+function DecisionsSummary({ events, runs }: { events: RunEvent[]; runs: Run[] }) {
+  const d = React.useMemo(() => summarizeDecisions(events, runs), [events, runs]);
+  const interventions = d.shown + d.proposed;
+  const quietShare = d.total ? d.doNothing / d.total : null;
+  return (
+    <section className="rounded-lg border border-line bg-surface p-4" data-testid="decisions-summary">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="eyebrow">Decisions · observed</div>
+          <div className="mt-1 text-sm font-medium text-ink">
+            {d.total === 0 ? (
+              "No policy decisions recorded yet"
+            ) : (
+              <>
+                Synforma stayed quiet <span className="mono-data">{d.doNothing}</span> time{d.doNothing === 1 ? "" : "s"} (do-nothing decisions) and intervened <span className="mono-data">{interventions}</span> time{interventions === 1 ? "" : "s"}
+              </>
+            )}
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-graphite">
+            DO_NOTHING is a first-class policy action: every struggle signal is scored against staying quiet, and a system that always intervenes is judged by its false-intervention rate, not by how much help it shows.
+          </p>
+        </div>
+        <MoonStar className="h-4 w-4 shrink-0 text-slate" aria-hidden="true" />
+      </div>
+      {d.total ? (
+        <>
+          <div className="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-surface-3" aria-hidden="true">
+            <div className="h-full bg-ink" style={{ width: `${Math.round((quietShare ?? 0) * 100)}%` }} />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate">
+            <span>
+              <span className="mono-data text-ink">{formatPercent(quietShare)}</span> quiet
+            </span>
+            <span>
+              <span className="mono-data text-ink">{d.shown}</span> shown to people ({d.humanRuns} human run{d.humanRuns === 1 ? "" : "s"})
+            </span>
+            <span>
+              <span className="mono-data text-ink">{d.proposed}</span> proposed in simulation ({d.syntheticRuns} synthetic run{d.syntheticRuns === 1 ? "" : "s"}; nothing is displayed to a synthetic user)
+            </span>
+          </div>
+        </>
+      ) : (
+        <p className="mt-2 text-[11px] text-slate">Decisions are recorded as events (intervention_withheld, assistance_shown) when a person or a synthetic user is observed.</p>
+      )}
+    </section>
   );
 }
 
@@ -61,6 +128,15 @@ function InterventionCard({ i, program, hypothesis, runs }: { i: Intervention; p
               <span className="font-medium text-amber">Hypothesis</span>
               <span className="text-amber">{BARRIER_LABEL[hypothesis.barrier]}</span>
               <span className="mono-data ml-auto text-amber">{formatPercent(hypothesis.confidence)} confidence</span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {hypothesis.frictionState ? (
+                <FrictionStateBadge state={hypothesis.frictionState} />
+              ) : (
+                <span className="text-[11px] text-slate" data-testid="friction-state" data-state="none">
+                  No friction state: derived from navigation and validation signals only
+                </span>
+              )}
             </div>
             <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-xs text-graphite">
               {hypothesis.evidence.map((e, idx) => (
@@ -161,6 +237,7 @@ function InterventionCard({ i, program, hypothesis, runs }: { i: Intervention; p
                 <li key={idx}>{line}</li>
               ))}
             </ul>
+            <p className="text-[11px] text-slate">The always-present &ldquo;Do nothing&rdquo; candidate is scored against this technique each time; it wins whenever the evidence is weak, the person is fluent or proficient, or help was shown recently.</p>
           </div>
         ) : null}
       </div>
@@ -168,15 +245,16 @@ function InterventionCard({ i, program, hypothesis, runs }: { i: Intervention; p
   );
 }
 
-export function AdaptPanel({ program, interventions, hypotheses, runs, onGoGuide }: Props) {
+export function AdaptPanel({ program, interventions, hypotheses, runs, events = [], onGoGuide }: Props) {
   const sorted = [...interventions].sort((a, b) => b.createdAt - a.createdAt);
   return (
     <div className="space-y-5 p-5">
       <PanelHeader
         eyebrow="Phase 7 · Adapt"
         title="Interventions Synforma proposed"
-        description="Observe → diagnose → intervene → experiment → learn. Each struggle signal becomes a barrier hypothesis, a technique is selected from the registry by an explainable score, and content is composed from the objective. Nothing here is a fact about a person."
+        description="Observe → diagnose → intervene → experiment → learn. Each struggle signal becomes a barrier hypothesis tied to an observable friction state, every candidate technique is scored against doing nothing, and content is composed from the objective. Nothing here is a fact about a person."
       />
+      <DecisionsSummary events={events} runs={runs} />
       {sorted.length === 0 ? (
         <EmptyState
           icon={Lightbulb}
@@ -195,7 +273,7 @@ export function AdaptPanel({ program, interventions, hypotheses, runs, onGoGuide
           ))}
         </ul>
       )}
-      <Note>Techniques and citations come only from the registry; the barrier taxonomy is a theoretical model (COM-B adapted to software-mediated work). Lift is reported only once each arm has enough human runs.</Note>
+      <Note>Techniques and citations come only from the registry; the barrier taxonomy is a theoretical model (COM-B adapted to software-mediated work) and friction states are observable interaction states, never emotions or traits. Lift is reported only once each arm has enough human runs.</Note>
     </div>
   );
 }

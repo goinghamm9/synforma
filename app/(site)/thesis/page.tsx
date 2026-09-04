@@ -113,6 +113,12 @@ export default function ThesisPage() {
               </p>
               <PullQuote>Software that learns how your organization works, and continuously makes it work better.</PullQuote>
               <p>
+                Underneath the product is one intellectual problem: Synforma creates a continuously improving model of how a
+                person, an organization, software and AI should divide work. For every activity it asks whether the human
+                should learn it, whether AI should assist or perform it, whether the workflow or the software should change,
+                or whether the step should exist at all. Then it watches the outcome and updates the answer.
+              </p>
+              <p>
                 The rest of this document explains where that premise comes from, what it requires,
                 and what we have built to test it.
               </p>

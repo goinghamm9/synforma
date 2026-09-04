@@ -143,3 +143,26 @@ Store: `useSynforma((s) => s.proficiency[`${programId}/${stepId}`])`, `setProfic
 ### Provenance
 Every GraphNode carries `provenance { source, trust, observedAt }` (`TrustState`). Show it in node details as "How Synforma knows this".
 `action_regrounded` events now include `data.change` (a UI change event: type, screen, affectedStep, risk) — surface as "Change detected" entries.
+
+## Added for the five trust epics
+
+### Evidence — `@/lib/synforma/engine/evidence`
+`claimsFromProgram(program, graph, states)` → `Claim[]` (objective = ORGANIZATION_APPROVED, observed interface = AUTHORITATIVE_LIVE, planner mappings = MODEL_INFERRED, unmapped requirements = contested). `detectContradictions` runs inside it (accepted values vs offered options). `resolveBelief(claims, subject, predicate?)` → `{ belief, conflicting, reason }`. `truthReport(claims)` → counts by authority + contested list. `claimsFromRegrounding(programId, event, existing)` supersedes naming claims after a UI change. `validateClaim(claim, by, ok, note)`. `TRUST_LABEL`, `AUTHORITY_ORDER`.
+Store: `claims[programId]`, `setClaims(programId, claims)`. Compute claims after planning and after each Act run's re-groundings.
+
+### Trust — `@/lib/synforma/engine/trust`
+`defaultContract(workflow)` → `AutonomyContract` (A/B auto, C ask, D never); store `contracts[workflowId]`, `setContract`. `classifyAction(action, step)`, `ACTION_CLASS_LABEL`, `CLASS_PROFILE`, `policyFor(contract, cls)`. `stepTrust(step, workflow, contract, claims, userHistory?)` → `{ decision: act|prepare_ask|guide|ask|stop, risk, reasons, actionClass }`.
+Runner options: `contract`, `claims` (a contested claim on a step → the run stops with `run_abandoned` reason "conflicting sources" and a `trust_decision` event), plus `runId`, `programId`, `intent`, `decidedBy` for the ledger.
+
+### Ledger — `@/lib/synforma/engine/ledger`
+Runner hook `onLedger(entry)` receives a `LedgerEntry` per executed action (before/after field values, approval, result, rollback capability). Store: `ledger`, `addLedger`, `updateLedger(id, patch)`. `rollbackEntries(driver, entries)` undoes reversible fills newest-first (steps back through a wizard via Back/Previous when needed); mark restored entries with `updateLedger(id, { rolledBackAt })` and emit `ledger_rollback`.
+
+### Demonstration — `@/lib/synforma/engine/demonstration`
+`const rec = new DemonstrationRecorder(driver, onTraceEvent); rec.start(); const trace = rec.stop();`
+`reconstructWorkflow(trace, { objective: program.parsed, states, planned: program.workflow, startUrl, planner, previousVersion })` → `{ workflow (version bumped, origin "demonstration", governance "discovered"), questions (≤3, with options), deviations, summary }`. Emit `demonstration_recorded`. Save as the program's workflow after the person answers (record answers in `workflow.governance.note`), keep the previous version in `changelog`.
+
+### Skill / budget / modes / recap — `@/lib/synforma/engine/proficiency`
+`skillStatus(p, workflow.version, now)` → `{ status: unknown|learning|mastered|stale, reason }`, `SKILL_LABEL`; `updateProficiency(prev, outcome, workflow.version)` now records exposures/lastExecutedAt/workflowVersion. `DEFAULT_INTERVENTION_BUDGET` (3/run; `decide` deps.budget), `deriveMode({ getItDone, recentFailure })` → learning|performance|recovery (`decide` deps.mode), `composeRecap(events, workflow, runId)` → `{ handled, decided, approvals, skipped, text }` for teach-after.
+
+### Workflow versioning
+`workflow.version` ("1.0"…), `workflow.changelog[]`, `workflow.origin`, `workflow.governance { status: discovered|reviewed|approved|approved_with_exceptions|rejected, owner, at, note }`. Set version "1.0" with a changelog entry at first planning; bump on re-plan / demonstration (`bumpVersion`).

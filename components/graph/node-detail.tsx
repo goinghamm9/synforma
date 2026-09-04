@@ -1,10 +1,11 @@
 "use client";
 import * as React from "react";
-import type { EdgeType, GraphNode, NodeType, WorkGraph } from "@/lib/synforma/types";
+import type { EdgeType, GraphNode, NodeType, PlannerKind, WorkGraph } from "@/lib/synforma/types";
 import { neighbors } from "@/lib/synforma/graph/work-graph";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { EDGE_LABEL, NODE_RADIUS, STATUS_LABEL, TYPE_LABEL } from "./constants";
+import { describeSource, trustLabel, trustTone } from "./provenance";
 
 /** Keys shown first, per node type. Everything else follows in data order. */
 const PREFERRED_KEYS: Partial<Record<NodeType, string[]>> = {
@@ -99,9 +100,45 @@ export interface NodeDetailProps {
   node: GraphNode;
   onSelect: (id: string) => void;
   className?: string;
+  /** Planner of the program that owns this graph: names the planner behind an inference when the node itself does not. */
+  plannerKind?: PlannerKind;
 }
 
-export function NodeDetail({ graph, node, onSelect, className }: NodeDetailProps) {
+/** "How Synforma knows this": source, trust state and time from the node's provenance. Sample nodes carry none and are labelled illustrative. */
+function ProvenanceBlock({ node, plannerKind }: { node: GraphNode; plannerKind?: PlannerKind }) {
+  const p = node.provenance;
+  const observedAt = p && Number.isFinite(p.observedAt) ? p.observedAt : null;
+  return (
+    <div className="border-b border-line px-5 py-4" data-testid="node-provenance" data-trust={p?.trust ?? "none"}>
+      <p className="eyebrow">How Synforma knows this</p>
+      {p ? (
+        <>
+          <p className="mt-2 text-sm leading-snug text-ink" data-testid="node-provenance-source">
+            {describeSource(p, plannerKind)}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Badge variant={trustTone(p.trust)} data-testid="trust-badge">
+              {trustLabel(p.trust)}
+            </Badge>
+            <code className="mono-data text-[11px] text-mist">{p.trust}</code>
+          </div>
+          {observedAt !== null ? <p className="mt-2 text-[11px] text-slate">Observed {DATE_FMT.format(new Date(observedAt))}</p> : null}
+        </>
+      ) : (
+        <>
+          <div className="mt-2">
+            <Badge variant="muted" data-testid="trust-badge">
+              Illustrative
+            </Badge>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-slate">Part of the hand-written sample. Nothing here was observed or inferred by Synforma.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function NodeDetail({ graph, node, onSelect, className, plannerKind }: NodeDetailProps) {
   const data = React.useMemo(() => describeNodeData(node), [node]);
   const groups = React.useMemo(() => {
     const map = new Map<string, { edgeType: EdgeType; direction: "out" | "in"; title: string; items: { node: GraphNode; label?: string }[] }>();
@@ -138,6 +175,8 @@ export function NodeDetail({ graph, node, onSelect, className }: NodeDetailProps
         </div>
         {node.description ? <p className="mt-4 text-sm leading-relaxed text-graphite">{node.description}</p> : null}
       </div>
+
+      <ProvenanceBlock node={node} plannerKind={plannerKind} />
 
       {data.length ? (
         <div className="border-b border-line px-5 py-4">

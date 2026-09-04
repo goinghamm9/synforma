@@ -13,7 +13,7 @@ const TERMS: { term: string; weight: string; meaning: string }[] = [
     term: "contextFit",
     weight: "× 0.20",
     meaning:
-      "Starts at 0.6. Set to 0 (excluded) when the step needs judgment and the technique would act; 0.4 for Assist on a judgment step; 0.9 for automation on a step with no judgment content. Raised by 0.3 for a contextual pointer when the step's fields are hidden; halved for a worked example when no field implies a format; capped at 0.5 for acting on a commit step, since approval is required anyway.",
+      "Starts at 0.6. Set to 0 (excluded) when the step needs judgment and the technique would act; 0.4 for Assist on a judgment step; 0.9 for automation on a step with no judgment content. Raised by 0.3 for a contextual pointer when the step's fields are hidden; halved for a worked example when no field implies a format; capped at 0.5 for acting on a commit step, since approval is required anyway. Raised by 0.35 (first choice) or 0.15 when the technique is the minimal intervention for the observed interaction state (section 03), and cut to 0.3 for a pointer under decision uncertainty, because the control was already found. The person's preference adjusts it too: +0.15 for guidance under teach me, +0.2 for assist and act under just do it, ×0.6 for guidance under stay out of the way; Get It Done halves instruction (except clarify consequence and policy clarification) and adds 0.25 to assist and act.",
   },
   {
     term: "evidenceWeight",
@@ -30,12 +30,17 @@ const TERMS: { term: string; weight: string; meaning: string }[] = [
   {
     term: "repetitionPenalty",
     weight: "− 1.0",
-    meaning: "0.15 for every intervention already created with this technique on this step, capped at 0.3, so the engine tries something else rather than repeating itself.",
+    meaning: "0.15 for every intervention already created with this technique on this step, capped at 0.3, so the engine tries something else rather than repeating itself. Plus 0.25 when any help was shown less than 20 s ago in this run: the frequency cap.",
   },
   {
     term: "burdenPenalty",
     weight: "− 1.0",
-    meaning: "The technique's burden on the person × 0.4. Lighter interventions win ties.",
+    meaning: "The technique's burden on the person × 0.4 × the interruption multiplier, which rises with the person's proficiency on the step (section 07) and under the preference stay out of the way (×1.5), and falls under teach me (×0.7). Lighter interventions win ties.",
+  },
+  {
+    term: "uncertaintyPenalty",
+    weight: "− 1.0",
+    meaning: "(1 − hypothesis confidence) × 0.25. The less certain the diagnosis, the less any technique can score, and the more the Do-nothing candidate gains (section 06).",
   },
 ];
 
@@ -52,11 +57,12 @@ export function DecisionPolicy() {
       + 0.15 · evidenceWeight
       + 0.30 · previousSuccess
       − repetitionPenalty
-      − burdenPenalty`}
+      − burdenPenalty
+      − uncertaintyPenalty`}
         </pre>
         <p className="mt-4 text-sm leading-relaxed text-slate">
-          The highest total among techniques with a non-zero contextFit is chosen. Every component is stored with the intervention and shown under
-          &ldquo;Why this?&rdquo;.
+          The highest total among techniques with a non-zero contextFit is chosen, unless the Do-nothing candidate, always present and scored
+          separately (section 06), ranks above it. Every component is stored with the intervention and shown under &ldquo;Why this?&rdquo;.
         </p>
       </figure>
 

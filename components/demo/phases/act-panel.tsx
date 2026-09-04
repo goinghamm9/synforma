@@ -1,11 +1,11 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, Check, CheckCircle2, Circle, ExternalLink, Loader2, Play, RotateCcw, ShieldCheck, Square, Wrench, XCircle } from "lucide-react";
-import { Badge, Button, Label, Switch } from "@/components/ui";
+import { AlertTriangle, Check, CheckCircle2, Circle, ExternalLink, GitCompareArrows, Loader2, Play, RotateCcw, ShieldCheck, Square, Wrench, XCircle } from "lucide-react";
+import { Badge, Button, Label, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { cn, formatDuration } from "@/lib/utils";
 import type { Program, Run } from "@/lib/synforma/types";
 import type { RunnerResult } from "@/lib/synforma/engine/runner";
-import type { LogLine, UiVariant } from "../types";
+import type { ChangeRecord, LogLine, UiVariant } from "../types";
 import { ErrorNote, LogView, Note, OutcomeBadge, PanelHeader, Stat } from "../bits";
 
 export interface ActState {
@@ -20,6 +20,8 @@ export interface ActState {
   error: string | null;
   regroundings: number;
   uiVariant: UiVariant | null;
+  /** UI changes detected by semantic re-grounding during this run (from `action_regrounded` events). */
+  changes: ChangeRecord[];
 }
 
 interface Props {
@@ -37,6 +39,27 @@ interface Props {
   onOpenOutcome: (url: string) => void;
 }
 
+const DRIFT_TOOLTIP =
+  "Configuration-drift detection, in seed form: every time a planned control no longer exists and is re-resolved by meaning, Synforma records a UI change event (screen, affected step, risk). Each change was re-verified by executing the workflow on the changed interface.";
+
+function ChangesCounter({ count }: { count: number }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn("inline-flex cursor-default items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]", count ? "border-ink/20 bg-surface-2 text-ink" : "border-line text-slate")}
+          data-testid="changes-counter"
+          data-count={count}
+        >
+          <GitCompareArrows className="h-3 w-3" aria-hidden="true" />
+          {count} change{count === 1 ? "" : "s"} detected
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="left">{DRIFT_TOOLTIP}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requireApproval, agentRuns, onRun, onStop, onToggleUi, onOpenOutcome }: Props) {
   const workflow = program.workflow;
   const parsed = program.parsed;
@@ -46,6 +69,7 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
   const metSet = new Set(result?.requirementsMet ?? []);
   const lastRun = agentRuns.length ? agentRuns[agentRuns.length - 1] : null;
   const canRun = Boolean(workflow && workflow.steps.length) && !running && !uiBusy;
+  const changes = state.changes ?? [];
 
   return (
     <div className="space-y-5 p-5">
@@ -129,14 +153,17 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
       )}
 
       <section className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="eyebrow">Action log</span>
-          {state.regroundings ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-verdant-soft px-2 py-0.5 text-[11px] text-verdant">
-              <Wrench className="h-3 w-3" aria-hidden="true" />
-              {state.regroundings} self-healed
-            </span>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {state.regroundings ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-verdant-soft px-2 py-0.5 text-[11px] text-verdant">
+                <Wrench className="h-3 w-3" aria-hidden="true" />
+                {state.regroundings} self-healed
+              </span>
+            ) : null}
+            {changes.length ? <ChangesCounter count={changes.length} /> : null}
+          </div>
         </div>
         <LogView lines={state.log} height={running ? 260 : 200} emptyText="Actions will appear here as the agent performs them." className="act-log" />
       </section>
@@ -147,9 +174,10 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
       {result && state.status === "done" ? (
         <section className="space-y-3 rounded-lg border border-line bg-surface p-4" data-testid="act-result">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="eyebrow">Result</span>
               <OutcomeBadge outcome={result.outcome} />
+              <ChangesCounter count={changes.length} />
             </div>
             <span className="mono-data text-[11px] text-slate">{state.runId}</span>
           </div>
@@ -170,6 +198,26 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
               );
             })}
           </ul>
+          {changes.length ? (
+            <div className="space-y-1" data-testid="change-list">
+              <div className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-slate">
+                <GitCompareArrows className="h-3 w-3" aria-hidden="true" />
+                Changes detected · observed
+              </div>
+              <ul className="divide-y divide-line rounded-md border border-line text-xs">
+                {changes.map((c) => (
+                  <li key={c.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-2.5 py-1.5">
+                    <span className="mono-data text-slate">{c.screen ?? "unknown screen"}</span>
+                    <span className="text-graphite">
+                      &lsquo;{c.from}&rsquo; is now &lsquo;{c.to}&rsquo;
+                    </span>
+                    <span className={cn("ml-auto rounded-full border px-1.5 py-px text-[10.5px]", c.risk === "medium" || c.risk === "high" ? "border-amber/30 bg-amber-soft text-amber" : "border-line text-slate")}>{c.risk} risk</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-slate">Nothing was re-configured. Each change was re-resolved by meaning and re-verified by execution; this is the seed of configuration-drift detection.</p>
+            </div>
+          ) : null}
           {result.error ? <p className="text-xs text-signal">{result.error}</p> : null}
           {result.outcomeUrl ? (
             <Button variant="outline" size="sm" onClick={() => onOpenOutcome(result.outcomeUrl!)} data-testid="open-outcome">

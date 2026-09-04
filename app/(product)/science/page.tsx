@@ -4,7 +4,11 @@ import { AutomationLevels } from "@/components/science/automation-levels";
 import { BarrierModel } from "@/components/science/barrier-model";
 import { CitationList } from "@/components/science/citation-list";
 import { DecisionPolicy } from "@/components/science/decision-policy";
+import { DoNothingPolicy } from "@/components/science/do-nothing";
 import { EpistemologyLadder } from "@/components/science/epistemology";
+import { FrictionStates } from "@/components/science/friction-states";
+import { GuidanceFading } from "@/components/science/guidance-fading";
+import { KnowledgeSources } from "@/components/science/knowledge-sources";
 import { ScienceSection } from "@/components/science/shell";
 import { InterventionRegistry } from "@/components/science/technique-card";
 import { CITATIONS } from "@/lib/synforma/science/citations";
@@ -13,15 +17,19 @@ import { TECHNIQUES } from "@/lib/synforma/science/techniques";
 export const metadata: Metadata = {
   title: "Science",
   description:
-    "How Synforma separates evidence from theory, theory from stance, and all three from the product hypothesis it tests per program: the barrier model, the intervention registry, the decision policy, and the levels of automation.",
+    "How Synforma separates evidence from theory, theory from stance, and all three from the product hypothesis it tests per program: the barrier model, the observable interaction states, the intervention registry, the decision policy including doing nothing, guidance fading, the levels of automation, and where its knowledge comes from.",
 };
 
 const CONTENTS: { id: string; label: string }[] = [
   { id: "epistemology", label: "Four kinds of claim" },
   { id: "barriers", label: "The barrier model" },
+  { id: "friction", label: "Observable interaction states" },
   { id: "registry", label: "Intervention registry" },
   { id: "policy", label: "Decision policy" },
+  { id: "do-nothing", label: "Do nothing is a decision" },
+  { id: "fading", label: "Guidance fades with mastery" },
   { id: "automation", label: "Guide, Assist, Act" },
+  { id: "knowledge", label: "Where knowledge comes from" },
   { id: "references", label: "References" },
 ];
 
@@ -90,8 +98,18 @@ export default function SciencePage() {
         </ScienceSection>
 
         <ScienceSection
-          id="registry"
+          id="friction"
           index="03"
+          eyebrow="Observation"
+          title="Observable interaction states, not mental states"
+          lede="Nine states of an interaction, each defined by the rule that produces it from the screen, the navigation and, with consent, pointer and keyboard-metadata aggregates. Labeled a product hypothesis, versioned, and never a statement about a person."
+        >
+          <FrictionStates />
+        </ScienceSection>
+
+        <ScienceSection
+          id="registry"
+          index="04"
           eyebrow="Registry"
           title="The interventions Synforma can choose from"
           lede="The adoption engine selects only from this list. Each entry names its mechanism, the barriers it addresses, its evidence class in the general literature, its cautions, and its sources. Nothing here was written by a language model."
@@ -101,7 +119,7 @@ export default function SciencePage() {
 
         <ScienceSection
           id="policy"
-          index="04"
+          index="05"
           eyebrow="Decision policy"
           title="How a technique is chosen"
           lede="One formula, six terms, every component stored with the intervention so the choice can be read back later."
@@ -110,8 +128,28 @@ export default function SciencePage() {
         </ScienceSection>
 
         <ScienceSection
+          id="do-nothing"
+          index="06"
+          eyebrow="Decision policy"
+          title="Do nothing is a decision"
+          lede="Silence is a scored candidate in every decision, and the one that wins most often. How it is scored, and why the false-intervention rate is a quality metric rather than a footnote."
+        >
+          <DoNothingPolicy />
+        </ScienceSection>
+
+        <ScienceSection
+          id="fading"
+          index="07"
+          eyebrow="Proficiency"
+          title="Guidance fades with mastery"
+          lede="Assistance is meant to leave. A per-step rule lowers guidance after repeated unassisted success and restores it after errors; the person can override it in either direction."
+        >
+          <GuidanceFading />
+        </ScienceSection>
+
+        <ScienceSection
           id="automation"
-          index="05"
+          index="08"
           eyebrow="Levels of automation"
           title="Guide, Assist, Act"
           lede="Three levels of automation chosen per step, with two invariants that no planner, heuristic or model, can override."
@@ -120,8 +158,18 @@ export default function SciencePage() {
         </ScienceSection>
 
         <ScienceSection
+          id="knowledge"
+          index="09"
+          eyebrow="Knowledge"
+          title="Where knowledge comes from"
+          lede="Every node in the Work Graph says how Synforma knows it. A fixed authority hierarchy decides what outranks what, and inferences are never allowed to pass as observations."
+        >
+          <KnowledgeSources />
+        </ScienceSection>
+
+        <ScienceSection
           id="references"
-          index="06"
+          index="10"
           eyebrow="References"
           title="Citations"
           lede="Every research reference used anywhere in Synforma. Each entry is a published work with its DOI, and states carefully what Synforma takes from it."

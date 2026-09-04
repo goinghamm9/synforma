@@ -4,8 +4,11 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   ApprovalRequest,
   AuditEntry,
+  AutonomyContract,
+  Claim,
   Hypothesis,
   Intervention,
+  LedgerEntry,
   ProficiencyState,
   Program,
   Run,
@@ -39,10 +42,20 @@ export interface SynformaState {
   approvals: Record<string, ApprovalRequest>;
   /** Keyed by `${programId}/${stepId}`. */
   proficiency: Record<string, ProficiencyState>;
+  /** Evidence: claims per program. */
+  claims: Record<string, Claim[]>;
+  /** Provenance + rollback ledger (append-only; rolledBackAt set on undo). */
+  ledger: LedgerEntry[];
+  /** Autonomy Contracts keyed by workflow id. */
+  contracts: Record<string, AutonomyContract>;
   settings: SynformaSettings;
   activeProgramId: string | null;
 
   setProficiency: (p: ProficiencyState) => void;
+  setClaims: (programId: string, claims: Claim[]) => void;
+  addLedger: (entry: LedgerEntry) => void;
+  updateLedger: (id: string, patch: Partial<LedgerEntry>) => void;
+  setContract: (c: AutonomyContract) => void;
   upsertProgram: (p: Program) => void;
   setActiveProgram: (id: string | null) => void;
   saveGraph: (g: WorkGraph) => void;
@@ -75,6 +88,9 @@ const empty = () => ({
   audit: [] as AuditEntry[],
   approvals: {},
   proficiency: {} as Record<string, ProficiencyState>,
+  claims: {} as Record<string, Claim[]>,
+  ledger: [] as LedgerEntry[],
+  contracts: {} as Record<string, AutonomyContract>,
   settings: DEFAULT_SETTINGS,
   activeProgramId: null as string | null,
 });
@@ -84,6 +100,10 @@ export const useSynforma = create<SynformaState>()(
     (set, get) => ({
       ...empty(),
       setProficiency: (p) => set((s) => ({ proficiency: { ...s.proficiency, [`${p.programId}/${p.stepId}`]: p } })),
+      setClaims: (programId, claims) => set((s) => ({ claims: { ...s.claims, [programId]: claims } })),
+      addLedger: (entry) => set((s) => ({ ledger: [...s.ledger.slice(-2999), entry] })),
+      updateLedger: (id, patch) => set((s) => ({ ledger: s.ledger.map((e) => (e.id === id ? { ...e, ...patch } : e)) })),
+      setContract: (c) => set((s) => ({ contracts: { ...s.contracts, [c.workflowId]: c } })),
       upsertProgram: (p) => set((s) => ({ programs: { ...s.programs, [p.id]: { ...p, updatedAt: Date.now() } } })),
       setActiveProgram: (id) => set({ activeProgramId: id }),
       saveGraph: (g) => set((s) => ({ graphs: { ...s.graphs, [g.id]: { ...g, nodes: g.nodes.map((n) => ({ ...n })), edges: g.edges.map((e) => ({ ...e })) } } })),
@@ -131,13 +151,17 @@ export const useSynforma = create<SynformaState>()(
           const interventions = Object.fromEntries(Object.entries(s.interventions).filter(([, i]) => i.programId !== id));
           const approvals = Object.fromEntries(Object.entries(s.approvals).filter(([, a]) => !runIds.has(a.runId)));
           const proficiency = Object.fromEntries(Object.entries(s.proficiency).filter(([, p]) => p.programId !== id));
-          return { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, approvals, proficiency, activeProgramId: s.activeProgramId === id ? null : s.activeProgramId };
+          const claims = { ...s.claims };
+          delete claims[id];
+          const ledger = s.ledger.filter((e) => e.programId !== id);
+          const contracts = program?.workflow ? Object.fromEntries(Object.entries(s.contracts).filter(([wid]) => wid !== program.workflow!.id)) : s.contracts;
+          return { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, approvals, proficiency, claims, ledger, contracts, activeProgramId: s.activeProgramId === id ? null : s.activeProgramId };
         }),
       resetAll: () => set(empty()),
       exportJSON: () => {
         const s = get();
-        const { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, settings } = s;
-        return JSON.stringify({ exportedAt: new Date().toISOString(), programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, settings }, null, 2);
+        const { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, claims, ledger, contracts, settings } = s;
+        return JSON.stringify({ exportedAt: new Date().toISOString(), programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, claims, ledger, contracts, settings }, null, 2);
       },
       importJSON: (json) => {
         try {
@@ -165,6 +189,9 @@ export const useSynforma = create<SynformaState>()(
         audit: s.audit,
         approvals: s.approvals,
         proficiency: s.proficiency,
+        claims: s.claims,
+        ledger: s.ledger,
+        contracts: s.contracts,
         settings: s.settings,
         activeProgramId: s.activeProgramId,
       }),

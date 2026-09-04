@@ -50,3 +50,23 @@ signals (assist requests, help-center searches), and privacy controls per person
   Capability Value scoring per step (judgment, transferability, frequency, deskilling consequence).
 - **Research track**: high-fidelity lab mode (eye tracking, mouse, keyboard metadata) to find less-invasive
   proxies; gaze stays optional and off by default; kill criteria as specified.
+
+## The five engineering epics (seeded in this build, to be hardened)
+
+1. **Evidence + Truth Engine** — what Synforma should believe. Seeded: claims with authority, contradictions, belief resolution, supersession by live observation, human validation. Next: SOP/document ingestion with owner/scope/authority, exception universes ("except government customers"), "why" behind every step (purpose, policy, owner), organizational memory (what changed, who, why, whether the problem still exists), cargo-cult step detection.
+2. **Trust + Autonomy Engine** — what Synforma is allowed to do. Seeded: action classes, Autonomy Contract, trust decision, STOP on conflict. Next: permission + authority graph (can technically / is authorized / Synforma may / always ask), approval tokens bound to parameter hashes, human escalation graph (who owns this policy), work-type decomposition (mechanical · retrieval · transformation · decision · judgment · creative · approval · relationship).
+3. **Workflow Discovery / Shadow Mode** — learn processes without a builder. Seeded: autonomous discovery, expert demonstration capture with clarification questions, semantic workflow versions with governance lifecycle. Next: silent observation period ("312 instances observed; here is what I think is happening"), owner review and approval, cross-application traces, workflow compression ("23 interactions → 4 decisions").
+4. **Skill + Intervention Engine** — minimum useful assistance, progressively withdrawn. Seeded: friction states, DO_NOTHING, budget, fading, skill decay and staleness, teach-after recap, performance/recovery modes. Next: personal baselines (robust z-scores), cold-start progression (day 1 → month 1), instant corrections ("that's not why I stopped"), teach-now / teach-while / teach-after choices, workflow cost per execution.
+5. **Provenance + Rollback Ledger** — every autonomous action inspectable and reversible. Seeded: ledger with before/after and undo for reversible fills. Next: compensating actions via connectors, time-range rollback ("undo 2:00–2:15"), model/version stamps, exportable audit packages.
+
+Also from the same review: synthetic enterprise as a development laboratory; the Synforma Benchmark
+(intent recognition, UI understanding, workflow reconstruction, action correctness, grounding, exception
+detection, intervention quality, hallucination, permission adherence, latency, cost); AI gateway with
+policy-based routing (OpenAI / Anthropic / Gemini / Azure / Bedrock / hosted / local); zero-trust
+deployment; local runtime for latency and privacy; remote desktop / VDI / native surfaces; accessibility as
+an opportunity; proof-of-value metrics built in (time to proficiency, interactions per workflow, assistance
+dependence, error, rework, automation share, workflow cost).
+
+The product test on the wall: after six months, is the person accomplishing more, understanding the
+important parts of their work better, performing fewer meaningless interactions, depending on Synforma
+less for things worth knowing and more for things never worth doing manually?

@@ -1,6 +1,9 @@
 # Synforma architecture
 
-Synforma is an **Enterprise Intent Layer** prototype. Its shape follows the thesis:
+Synforma is an **Enterprise Intent Layer** prototype. The problem it works on is not teaching people
+where to click. It is: establishing trustworthy ground truth about what should happen, knowing when
+Synforma is certain enough to intervene or act, and continuously proving that the human-system
+combination got better. Its shape follows the thesis:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -22,6 +25,46 @@ Synforma is an **Enterprise Intent Layer** prototype. Its shape follows the thes
 └──────────────────────────────────────────────────────────────┘
    wrapped by: approvals · audit log · cohorts · settings · local-only data
 ```
+
+## The operating architecture (target) and what exists
+
+```
+                 OUTCOME GRAPH        roadmap (objective → process → workflow → action → application)
+                      │
+                 INTENT ENGINE        planner: objective → program (population, requirements, policy, success)
+                      │
+                   WORK GRAPH         graph/: screens · actions · fields · objects · requirements · workflow · steps
+                      │
+        ┌─────────────┼─────────────┐
+ CONFIGURATION    KNOWLEDGE      SKILL
+     GRAPH          GRAPH         GRAPH   observed interface (tenant truth) · objective + citations · proficiency per step
+        └─────────────┼─────────────┘
+               EVIDENCE ENGINE        engine/evidence.ts: claims with source, authority, freshness, confidence,
+                      │               scope, validator, contradictions; belief by authority hierarchy
+                  TRUST ENGINE        engine/trust.ts: action classes A–D, Autonomy Contract (auto / ask / never),
+                      │               decision from confidence × reversibility × consequence; conflict → STOP
+              INTERVENTION ENGINE     engine/adoption.ts: friction → hypothesis → DO_NOTHING vs technique,
+                      │               interruption budget, preference, mode, proficiency
+               AUTONOMY ENGINE        runner: Act / Get It Done (routine only) / Assist a step
+                      │
+          GUIDE • ASSIST • ACT        per step, per person, per context
+                      │
+               EXECUTION LAYER        interaction/driver.ts (same-origin iframe); roadmap: API · MCP · extension · computer use
+                      │
+                 OBSERVATION          interaction/snapshot.ts + telemetry.ts (pointer / keyboard metadata; gaze interface only)
+                      │
+               OUTCOME MEASURE        engine/metrics.ts + recommend.ts
+                      │
+                     LEARN            proficiency fading, intervention evaluation, claims superseded by live observation
+```
+
+Surrounding everything: approvals, audit, the provenance + rollback ledger (`engine/ledger.ts`), cohorts,
+local-only data, and the person's controls. Demonstration capture (`engine/demonstration.ts`) lets an
+expert teach a workflow by performing it once.
+
+Principles encoded as code: reversible autonomy (autonomy grows with reversibility × confidence ÷
+consequence); conflicting sources stop autonomy; DO_NOTHING is a decision; optimize the system, not
+obedience to the system; one success is never mastery; typed values never enter telemetry.
 
 ## Runtime topology
 
@@ -65,7 +108,13 @@ one made each decision.
 | `engine/metrics.ts` | Intent-to-Outcome Rate, per-step friction, cohorts; computed from events only |
 | `engine/synthetic.ts` | Synthetic personas = the runner with capabilities switched off |
 | `science/techniques.ts`, `science/citations.ts` | The only sources of techniques and citations |
-| `store/index.ts` | zustand + localStorage persistence, export/import |
+| `engine/evidence.ts` | Claims (source, authority, freshness, confidence, scope, validator, contradictions), belief resolution, truth report |
+| `engine/trust.ts` | Action classes, Autonomy Contract, trust decision (act / prepare_ask / guide / ask / stop) |
+| `engine/ledger.ts` | Provenance + rollback ledger entries with before/after state; undo of reversible actions |
+| `engine/demonstration.ts` | Demonstration recorder (semantic trace, no typed values) and workflow reconstruction with clarification questions |
+| `engine/proficiency.ts` | Fading, skill status with decay and staleness after workflow change, intervention budget, modes, teach-after recap |
+| `engine/recommend.ts` | System-vs-human diagnosis for administrators |
+| `store/index.ts` | zustand + localStorage persistence (incl. claims, ledger, contracts, proficiency), export/import |
 
 ## Data model
 
@@ -85,6 +134,10 @@ and row-level security added):
 | `approvals` | `approvals` | payload shown, decision, timestamps |
 | `audit` | `audit_log` | every action, approval and run lifecycle event |
 | `settings` | `org_settings` | planner preference, thresholds, cohort share |
+| `claims` | `claims` | evidence per program with authority, status, contradictions |
+| `ledger` | `action_ledger` | before/after, approval, rollback capability, rolled-back marker |
+| `contracts` | `autonomy_contracts` | per workflow, versioned, approver |
+| `proficiency` | `proficiency_state` | per person × workflow × step (employee-private) |
 
 ## Trust properties (enforced in code, not policy text)
 

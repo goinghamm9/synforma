@@ -2,12 +2,15 @@
 import * as React from "react";
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Eye, HelpCircle, Lock, Pencil, Scale, User } from "lucide-react";
 import { Badge, Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { neighbors, nodeId } from "@/lib/synforma/graph/work-graph";
 import { cn, formatPercent } from "@/lib/utils";
-import type { Action, Program, Requirement, WorkflowStep } from "@/lib/synforma/types";
-import { ModeBadge, Note, PanelHeader, Stat } from "../bits";
+import type { Action, GraphNode, PlannerKind, Program, Requirement, WorkGraph, WorkflowStep } from "@/lib/synforma/types";
+import { ModeBadge, Note, PanelHeader, Stat, TrustBadge } from "../bits";
 
 interface Props {
   program: Program;
+  /** The program's Work Graph from the store; carries provenance for requirement, step and field nodes. */
+  graph?: WorkGraph | null;
   plannerLabel: string;
   plannerName: string;
   onApprove: () => void;
@@ -30,11 +33,19 @@ function actionText(a: Action): string {
   return a.label;
 }
 
-function StepCard({ step, requirements }: { step: WorkflowStep; requirements: Requirement[] }) {
+/** Field nodes that fulfil a requirement, with their own provenance (observed on the live interface). */
+function fieldsFulfilling(graph: WorkGraph | null | undefined, requirementId: string): GraphNode[] {
+  if (!graph) return [];
+  return neighbors(graph, nodeId("requirement", requirementId))
+    .filter((nb) => nb.edge.type === "fulfills" && nb.direction === "in" && nb.node.type === "field")
+    .map((nb) => nb.node);
+}
+
+function StepCard({ step, requirements, node, planner }: { step: WorkflowStep; requirements: Requirement[]; node?: GraphNode; planner: PlannerKind }) {
   const [open, setOpen] = React.useState(false);
   const mapped = requirements.filter((r) => step.requirementIds.includes(r.id));
   return (
-    <li className="rounded-lg border border-line bg-surface">
+    <li className="rounded-lg border border-line bg-surface" data-testid="workflow-step">
       <div className="flex items-start gap-3 p-3">
         <span className="mono-data mt-0.5 w-5 shrink-0 text-right text-xs text-slate">{step.index + 1}</span>
         <div className="min-w-0 flex-1">
@@ -64,7 +75,8 @@ function StepCard({ step, requirements }: { step: WorkflowStep; requirements: Re
             </Tooltip>
           </div>
           {step.description ? <p className="mt-1 text-xs text-graphite">{step.description}</p> : null}
-          <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <TrustBadge provenance={node?.provenance} planner={planner} />
             {mapped.map((r) => (
               <span key={r.id} className="rounded-full bg-surface-2 px-2 py-0.5 text-graphite">
                 requirement {r.id.replace("r", "")}
@@ -100,9 +112,10 @@ function StepCard({ step, requirements }: { step: WorkflowStep; requirements: Re
   );
 }
 
-export function UnderstandPanel({ program, plannerLabel, plannerName, onApprove, onEdit, onDiscover }: Props) {
+export function UnderstandPanel({ program, graph, plannerLabel, plannerName, onApprove, onEdit, onDiscover }: Props) {
   const parsed = program.parsed;
   const workflow = program.workflow;
+  const nodeById = React.useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, n] as const)), [graph]);
   if (!parsed || !workflow) {
     return (
       <div className="space-y-4 p-5">
@@ -163,11 +176,18 @@ export function UnderstandPanel({ program, plannerLabel, plannerName, onApprove,
       </section>
 
       <section className="space-y-2">
-        <span className="eyebrow">Requirements</span>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <span className="eyebrow">Requirements</span>
+          <span className="text-[11px] text-slate" data-testid="provenance-legend">
+            How Synforma knows this: <span className="text-ink">organization-approved</span> from the objective · <span className="text-ink">observed</span> on the live interface · <span className="text-amber">model-inferred</span> by the planner
+          </span>
+        </div>
         <ul className="space-y-1.5" data-testid="requirements">
           {fieldReqs.map((r) => {
             const mapped = mappedIds.has(r.id);
             const exp = expectationText(r);
+            const node = nodeById.get(nodeId("requirement", r.id));
+            const fields = fieldsFulfilling(graph, r.id);
             return (
               <li key={r.id} className={cn("rounded-lg border px-3 py-2", mapped ? "border-line bg-surface" : "border-amber/30 bg-amber-soft")}>
                 <div className="flex items-start gap-2">
@@ -190,6 +210,16 @@ export function UnderstandPanel({ program, plannerLabel, plannerName, onApprove,
                         </Badge>
                       ) : null}
                       {exp ? <span className="text-slate">{exp}</span> : null}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]" data-testid="requirement-provenance">
+                      {mapped || node ? <TrustBadge provenance={node?.provenance} planner={program.planner} /> : null}
+                      {fields.map((f) => (
+                        <span key={f.id} className="inline-flex flex-wrap items-center gap-1 text-slate">
+                          <span className="text-mist">→</span>
+                          <span className="text-graphite">{f.label}</span>
+                          <TrustBadge provenance={f.provenance} planner={program.planner} />
+                        </span>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -224,7 +254,7 @@ export function UnderstandPanel({ program, plannerLabel, plannerName, onApprove,
         ) : (
           <ol className="space-y-2" data-testid="workflow-steps">
             {workflow.steps.map((s) => (
-              <StepCard key={s.id} step={s} requirements={parsed.requirements} />
+              <StepCard key={s.id} step={s} requirements={parsed.requirements} node={nodeById.get(nodeId("step", workflow.id, s.id))} planner={program.planner} />
             ))}
           </ol>
         )}

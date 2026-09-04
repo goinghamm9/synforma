@@ -119,7 +119,7 @@ rejected values, date windows) → `outcome_verified`, `run_completed` with `req
 (surface skimmer), `fixValidation` and `fillOptional` (hurried closer). Their runs are labeled synthetic
 and excluded from human timing statistics.
 
-## 7. Observation (`observer.ts`)
+## 7. Observation (`observer.ts`) and the friction engine (`friction.ts`)
 
 Every 500 ms: snapshot; if the outcome route is reached → verify and complete. Otherwise infer the
 current step from anchors (route pattern + step heading, matched even behind a modal). Transitions emit
@@ -127,6 +127,34 @@ current step from anchors (route pattern + step heading, matched even behind a m
 new `role=alert` text → `validation_error`; no input/click/keydown for the hesitation threshold (doubling
 after each fire) while the step's requirements are unmet → `hesitation`. A live checklist re-reads the
 mapped fields (accepted / rejected values, date windows; checkbox groups stay met once any option is).
+
+### Interaction telemetry (`interaction/telemetry.ts`)
+
+Raw pointer movement is reduced locally to 1-second `PointerWindow`s: path distance, straight-line
+distance, path efficiency, mean/max velocity, direction changes (> 45°), hover dwell per semantic element,
+approaches (within 40 px of the current target) and withdrawals (then > 120 px away), clicks, idle time.
+Keyboard events become `KeyboardWindow` METADATA: counts per category (character, backspace, enter,
+escape, shortcut, navigation), median inter-key interval, bursts. The key value is classified and
+discarded synchronously; password / secret / card / token fields emit only a suppressed count. No gaze.
+
+### Friction engine v0 (`friction.ts`, rule version friction-v0.1)
+
+Every ~1.5 s the observer scores the observable states (evidence in parentheses):
+
+| state | rule |
+|---|---|
+| FLUENT | clicks or keys in the last seconds without errors; or the step was entered < 4 s ago |
+| ERROR_RECOVERY | a validation message is visible or an error occurred < 15 s ago (+ corrections) — outranks search evidence |
+| VISUAL_SEARCH | target known but never hovered ≥ 0.4 s, > 6 s on the step, no typing, inefficient path (efficiency < 0.55) and/or ≥ 6 direction changes |
+| DECISION_UNCERTAINTY | target hovered ≥ 0.6 s or approached ≥ 2 times, no click, step pending or commit; withdrawals add evidence |
+| POLICY_UNCERTAINTY | decision uncertainty on a judgment step constrained by accepted values or policy |
+| WORKFLOW_KNOWLEDGE_GAP | > 12 s with little movement and no target hover; or backtracks |
+| WORKFLOW_FRICTION | ≥ 2 validation errors on the same step |
+| UNKNOWN | no rule reached 0.3 |
+
+Output: state, confidence (share of evidence weight), evidence strings, alternatives. The "target" is the
+first unmet requirement field on the page, the control that reveals a hidden one, or the step anchor.
+Never an emotion, trait or score of a person.
 
 ## 8. Adaptation (`adoption.ts`)
 
@@ -142,12 +170,23 @@ mapped fields (accepted / rejected values, date windows; checkbox groups stay me
 | wrong screen | opportunity: visibility |
 | abandon at commit | motivation: uncertainty |
 
+Friction states map to barriers (`FRICTION_TO_BARRIER`) and prefer minimal interventions: visual search
+→ contextual pointer; decision uncertainty → clarify consequence (never a highlight: the control was
+found); error recovery → worked example; knowledge gap → inline explanation / if-then cue; workflow
+friction → prefill, act, or recommend redesign.
+
 **Select** a technique from the registry with an explainable score:
 
 ```
 total = 0.35·barrierFit + 0.20·contextFit + 0.15·evidenceWeight + 0.30·previousSuccess
-        − repetitionPenalty − burdenPenalty
+        − repetitionPenalty − burdenPenalty − uncertaintyPenalty
 ```
+
+**DO_NOTHING is always a candidate** (`scoreDoNothing`): 0.3 base, +0.45 when the state is FLUENT / UNKNOWN,
++0.35 × uncertainty, + proficiency multiplier, +0.3 for "stay out of the way", +0.25 within 20 s of the
+last intervention, −0.15 for hesitation before a commit. Preference and Get It Done adjust context fit
+(teach me favors guidance; just do it / Get It Done favor assist and act, and defer instruction).
+`decide()` returns the ranked candidates so the UI can explain why nothing appeared.
 
 - barrierFit: hypothesis confidence if the technique targets the primary barrier; 0.6 × alternative confidence otherwise.
 - contextFit: 0 for Act on judgment steps (excluded); boosted for pointers when fields are hidden; capped for Act on commit steps.
@@ -161,11 +200,84 @@ All components and their explanations are stored on the intervention ("Why this?
 against the treatment share; control runs record `assistance withheld`. **Learn**: `evaluateIntervention`
 reports treated vs control completion and lift only when both arms reach `minRunsPerArm`.
 
+### Proficiency and fading (`proficiency.ts`)
+
+Per program × step: assisted runs, unassisted successes, error history (last 5). After 3 unassisted
+successes with error rate < 34 %, assistance fades one level (do with me → guide → explain → observe);
+two error runs in five regress to guide. The person can override either way. Proficiency raises the
+interruption multiplier so DO_NOTHING wins more often for steps a person completes reliably.
+
+### Get It Done (`runner.ts`, `routineOnly`)
+
+Fills routine inputs, leaves judgment fields to the person, stops before the commit and asks for approval.
+The recap (handled / decided / approvals) is computed from events.
+
+### Admin diagnosis (`recommend.ts`)
+
+From aggregate metrics and the friction distribution of the highest-friction step, one class: learning
+need, assistance need, automation opportunity, policy problem, interface problem, integration problem,
+process design problem, or insufficient evidence (< 3 people runs). Each carries evidence, confidence,
+and what is unlikely to help ("additional navigation training").
+
 ## 9. Measurement (`metrics.ts`)
 
-- **Intent-to-Outcome Rate** = finished runs that completed **and** verified every requirement ÷ finished runs; `null` until 5 finished runs.
+- **Intent-to-Outcome Rate** = runs by people (human + synthetic, the latter labeled simulation) that completed **and** verified every requirement ÷ finished people runs; `null` until 5. Agent runs are reported separately.
 - Per-step: entered, completed, median human duration, errors, hesitations, backtracks, assistance shown, assist requested, friction index (needs ≥3 entries).
 - Cohorts: completion and median duration for control vs treatment.
 - Self-healing: total re-groundings.
 
 Nothing is extrapolated. The UI shows "Still learning" until `sufficient` is true.
+
+
+## 10. Evidence / Truth engine (`evidence.ts`)
+
+Synforma holds **claims**, not facts: subject, predicate, object, statement, source (objective /
+observed interface / planner inference / configuration / documentation / person), source reference,
+authority (`TrustState`), confidence, scope, observed time, validator, contradictions, supersession and
+status (asserted / validated / contested / retired).
+
+Sources of claims in the demo: the objective (organization-approved: requirements, accepted values,
+policy constraints); the observed interface (authoritative live: each field with its options and required
+flag, each commit control); the planner (model-inferred: field → requirement mappings, plus an explicit
+contested claim for any requirement with no field).
+
+Contradiction detection: a requirement's accepted values not offered by the mapped field's options marks
+both claims contested with the reason. Belief resolution uses the authority hierarchy, then freshness,
+and returns *no belief* when the subject is contested. Re-grounding during execution supersedes the old
+naming claim with a live observation. People can validate or reject claims.
+
+## 11. Trust + Autonomy engine (`trust.ts`)
+
+Action classes: A read/navigate · B reversible write · C consequential write · D external or destructive.
+The default Autonomy Contract for a workflow: A and B automatic, C ask (preview + approval every time),
+D never. Trust decision per step: conflicting sources → **stop**; contract "never" or human judgment →
+**guide**; confidence < 0.5 → **ask**; risk = 0.55·consequence + 0.25·(1 − reversibility) +
+0.2·external + 0.3·exception probability: ≥ 0.8 → guide, ≥ 0.45 or policy "ask" → **prepare + ask**,
+otherwise **act**. The runner records every decision and abandons a run whose evidence conflicts.
+
+## 12. Provenance + rollback ledger (`ledger.ts`)
+
+Every executed action becomes a ledger entry: who requested it, the believed intent, what it relied on
+(requirement or claim ids), who decided (planner or rule), action class, the action, before and after
+field values, approval status, result, re-grounding flag, and rollback capability (restore value for
+fills; compensating action needed for commits, not available in the sandbox; none for navigation).
+`rollbackEntries` undoes reversible entries newest-first by restoring previous values in the live
+interface — "undo what Synforma did".
+
+## 13. Demonstration capture (`demonstration.ts`)
+
+Shadow mode in miniature: a person performs the workflow once while the recorder captures a semantic
+trace (route, state, control clicked, field changed — never the typed value). Reconstruction groups the
+trace by screen state, turns clicks and changes into actions, maps changed fields to requirements, detects
+the commit, marks judgment, and produces up to three clarification questions (an unplanned click:
+required or convenient? the commit: always ask? which fields needed judgment?) plus the deviations from the
+planned workflow. The result is a new semantic version of the workflow with a changelog entry and
+governance status "discovered" (→ reviewed → approved → governed).
+
+## 14. Skill, budget, modes, teach-after (`proficiency.ts`)
+
+Skill status is never mastery after one success: unknown → learning → mastered (level explain/observe)
+→ stale (mastered on an older workflow version, or not executed for 45 days). The intervention budget
+(3 per run by default) makes DO_NOTHING win once spent. Modes: learning (default), performance (Get It
+Done or explicit deadline), recovery (after a failure: concrete help preferred). The teach-after recap is
+computed from events: what Synforma handled, what the person decided, approvals.

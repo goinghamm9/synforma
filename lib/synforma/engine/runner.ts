@@ -8,7 +8,11 @@ import type {
   Action,
   ActionResult,
   ApprovalRequest,
+  AutonomyContract,
+  Claim,
+  LedgerEntry,
   PageModel,
+  PlannerKind,
   Requirement,
   RunActor,
   RunEventType,
@@ -17,6 +21,8 @@ import type {
   Workflow,
   WorkflowStep,
 } from "../types";
+import { fieldValue, makeLedgerEntry } from "./ledger";
+import { classifyAction, policyFor, stepTrust } from "./trust";
 
 /**
  * Runner — executes a workflow in Act mode (whole workflow) or Assist mode
@@ -32,6 +38,8 @@ export interface RunnerHooks {
   onEvent: (type: RunEventType, data?: Record<string, unknown>, stepId?: string, message?: string) => void;
   requestApproval: (req: Omit<ApprovalRequest, "id" | "runId" | "requestedAt">) => Promise<"granted" | "denied">;
   onStep?: (step: WorkflowStep, status: "entered" | "completed" | "failed") => void;
+  /** Provenance + rollback ledger entry for every executed action. */
+  onLedger?: (entry: LedgerEntry) => void;
 }
 
 export interface RunnerOptions {
@@ -48,6 +56,14 @@ export interface RunnerOptions {
   onlySteps?: string[];
   /** Get It Done: fill routine (non-judgment) inputs, leave judgment fields to the person, stop before commit. */
   routineOnly?: boolean;
+  /** Trust layer: the workflow's Autonomy Contract and current claims. Conflicting claims stop autonomous steps. */
+  contract?: AutonomyContract;
+  claims?: Claim[];
+  /** For the ledger. */
+  runId?: string;
+  programId?: string;
+  intent?: string;
+  decidedBy?: PlannerKind | "rule";
 }
 
 export interface RunnerResult {
@@ -89,6 +105,25 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
     hooks.onEvent("step_entered", { title: step.title, mode: step.mode }, step.id, step.title);
     hooks.onStep?.(step, "entered");
     let page: PageModel = driver.snapshot().page;
+
+    // Trust decision for this step (Autonomy Contract + evidence). Conflicting sources stop autonomy.
+    if (opts.claims || opts.contract) {
+      const trust = stepTrust(step, workflow, opts.contract, opts.claims ?? []);
+      hooks.onEvent("trust_decision", { decision: trust.decision, risk: trust.risk, reasons: trust.reasons, actionClass: trust.actionClass }, step.id, `Trust: ${trust.decision} (${trust.actionClass})`);
+      if (trust.decision === "stop") {
+        hooks.onEvent("run_abandoned", { reason: "conflicting sources", details: trust.reasons }, step.id, trust.reasons[0]);
+        hooks.onStep?.(step, "failed");
+        return { outcome: "abandoned", requirementsMet: [], regroundings, failedStepId: step.id, error: trust.reasons[0] };
+      }
+      if (trust.decision === "guide" && opts.actor === "agent" && !opts.onlySteps) {
+        const cls = trust.actionClass;
+        if (policyFor(opts.contract, cls) === "never") {
+          hooks.onEvent("run_abandoned", { reason: "contract forbids autonomy", actionClass: cls }, step.id, `The Autonomy Contract never lets Synforma perform ${cls} actions`);
+          hooks.onStep?.(step, "failed");
+          return { outcome: "abandoned", requirementsMet: [], regroundings, failedStepId: step.id, error: "Autonomy Contract: never" };
+        }
+      }
+    }
 
     for (const raw of step.actions) {
       let action: Action = { ...raw };
@@ -150,7 +185,42 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
           hooks.onEvent("approval_granted", {}, step.id, "Approval granted");
         }
       }
+      // A menu item can only be reached through its menu: if none is open, open the popup buttons first.
+      if (action.kind === "click" && action.targetRole === "menuitem" && !page.actions.some((a) => a.role === "menuitem")) {
+        for (const popup of page.actions.filter((a) => a.role === "button" && a.popup && !a.commit)) {
+          const opened = await perform({ kind: "click", target: popup.key, targetName: popup.name, targetRole: "button", targetCommit: false, label: `Open menu ${popup.name}` }, step);
+          if (opened.page?.actions.some((a) => a.role === "menuitem")) {
+            page = opened.page;
+            break;
+          }
+        }
+      }
+      const beforeVal = fieldValue(page, action.target);
       let r = await perform(action, step);
+      if (hooks.onLedger && opts.runId && opts.programId) {
+        const afterPage = r.page ?? driver.snapshot().page;
+        const targetKey = r.regroundedTo ?? action.target;
+        const afterVal = fieldValue(afterPage, targetKey);
+        const reqId = requirementIdOfAction(raw);
+        hooks.onLedger(
+          makeLedgerEntry({
+            runId: opts.runId,
+            programId: opts.programId,
+            stepId: step.id,
+            requestedBy: opts.actor,
+            intent: opts.intent ?? workflow.title,
+            reliedOn: reqId ? [`requirement:${reqId}`] : [],
+            decidedBy: opts.decidedBy ?? "rule",
+            actionClass: classifyAction(action, step),
+            action,
+            before: beforeVal !== undefined && targetKey ? { key: targetKey, value: beforeVal } : undefined,
+            after: afterVal !== undefined && targetKey ? { key: targetKey, value: afterVal } : undefined,
+            approval: step.commit && isCommitAction(action, step) ? (requireApproval ? "granted" : "not_required") : "not_required",
+            result: r.ok ? "ok" : "failed",
+            regrounded: r.regrounded,
+          }),
+        );
+      }
       if (!r.ok && !caps.synonyms) {
         hooks.onEvent("hesitation", { simulated: true, reason: r.error }, step.id, r.error);
       }

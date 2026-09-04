@@ -1,10 +1,10 @@
 "use client";
 import * as React from "react";
-import { AlertCircle, CheckCircle2, CircleDashed, Hand, MousePointerClick, Sparkle, XCircle } from "lucide-react";
-import { Badge, Skeleton } from "@/components/ui";
+import { AlertCircle, BadgeCheck, CheckCircle2, CircleDashed, Cpu, Eye, Hand, HelpCircle, Info, MousePointerClick, Sparkle, XCircle } from "lucide-react";
+import { Badge, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import type { ExecutionMode, RunOutcome } from "@/lib/synforma/types";
-import { MODE_LABEL, OUTCOME_LABEL, type LogLine, type LogLevel } from "./types";
+import type { ExecutionMode, PlannerKind, Provenance, RunOutcome } from "@/lib/synforma/types";
+import { MODE_LABEL, OUTCOME_LABEL, SOURCE_LABEL, TRUST_LABEL, type LogLine, type LogLevel } from "./types";
 
 /** Small shared pieces used by several phase panels. */
 
@@ -25,10 +25,44 @@ export function PanelHeader({ eyebrow, title, description, aside }: { eyebrow: s
   );
 }
 
-export function Stat({ label, value, hint, tone = "ink", className }: { label: string; value: React.ReactNode; hint?: React.ReactNode; tone?: "ink" | "verdant" | "amber" | "signal" | "slate"; className?: string }) {
+/** Small info affordance with a tooltip; used next to labels that need one line of explanation. */
+export function InfoTip({ text, label = "More information" }: { text: React.ReactNode; label?: string }) {
   return (
-    <div className={cn("rounded-lg border border-line bg-surface px-3 py-2.5", className)}>
-      <div className="text-[11px] font-medium uppercase tracking-wider text-slate">{label}</div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className="inline-flex h-4 w-4 items-center justify-center rounded text-mist hover:text-ink" aria-label={label}>
+          <Info className="h-3 w-3" aria-hidden="true" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function Stat({
+  label,
+  value,
+  hint,
+  tone = "ink",
+  className,
+  info,
+  testId,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: React.ReactNode;
+  tone?: "ink" | "verdant" | "amber" | "signal" | "slate";
+  className?: string;
+  /** One-line explanation shown in a tooltip next to the label. */
+  info?: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div className={cn("rounded-lg border border-line bg-surface px-3 py-2.5", className)} data-testid={testId}>
+      <div className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-slate">
+        <span>{label}</span>
+        {info ? <InfoTip text={info} label={`About ${label}`} /> : null}
+      </div>
       <div
         className={cn(
           "mono-data mt-1 text-lg leading-none",
@@ -112,6 +146,60 @@ export function ActorBadge({ actor, persona }: { actor: "agent" | "human" | "syn
   );
 }
 
+/**
+ * "How Synforma knows this": a tiny trust badge for a Work Graph node's provenance.
+ * Observed facts, organization-approved statements and model inferences look different
+ * so the reader never mistakes a hypothesis for an observation.
+ */
+export function TrustBadge({ provenance, planner, className }: { provenance?: Provenance; planner?: PlannerKind; className?: string }) {
+  if (!provenance) {
+    return (
+      <span className={cn("inline-flex items-center gap-1 text-[10.5px] text-mist", className)} data-testid="trust-badge" data-trust="none">
+        <HelpCircle className="h-3 w-3" aria-hidden="true" />
+        Not in the Work Graph
+      </span>
+    );
+  }
+  const trust = provenance.trust;
+  const inferred = trust === "MODEL_INFERRED";
+  const observed = trust === "AUTHORITATIVE_LIVE" || trust === "OBSERVED_HIGH_CONFIDENCE" || trust === "OBSERVED_LOW_CONFIDENCE";
+  const approved = trust === "ORGANIZATION_APPROVED";
+  const by = provenance.by ?? planner;
+  const label = inferred ? `Model-inferred · ${by === "gemini" ? "Gemini" : "heuristic"}` : TRUST_LABEL[trust];
+  const Icon = inferred ? Cpu : approved ? BadgeCheck : observed ? Eye : HelpCircle;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "inline-flex cursor-default items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-px text-[10.5px] leading-4",
+            inferred && "border-amber/30 bg-amber-soft text-amber",
+            approved && "border-ink/25 bg-surface text-ink",
+            observed && "border-line-strong bg-surface-2 text-graphite",
+            !inferred && !approved && !observed && "border-line bg-surface text-slate",
+            className,
+          )}
+          data-testid="trust-badge"
+          data-trust={trust}
+        >
+          <Icon className="h-3 w-3" aria-hidden="true" />
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <span className="font-medium">How Synforma knows this</span>
+        <br />
+        {SOURCE_LABEL[provenance.source]}
+        <br />
+        <span className="text-paper/70">
+          trust state {trust.replace(/_/g, " ").toLowerCase()}
+          {inferred ? " · a hypothesis until a run confirms it" : ""}
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function EmptyState({ icon: Icon, title, body, action }: { icon?: React.ComponentType<{ className?: string }>; title: string; body?: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div className="dot-paper flex flex-col items-center justify-center rounded-lg border border-dashed border-line-strong px-6 py-10 text-center">
@@ -158,6 +246,7 @@ const LEVEL_CLASS: Record<LogLevel, string> = {
   heal: "bg-verdant-soft text-verdant",
   approval: "bg-amber-soft text-amber",
   done: "text-verdant",
+  change: "bg-surface-2 text-ink",
 };
 
 /** Streaming log with auto-scroll while the user is near the bottom. */
@@ -185,7 +274,7 @@ export function LogView({ lines, height = 220, emptyText = "Nothing yet.", class
       ) : (
         <ol className="px-2 py-1.5">
           {lines.map((l) => (
-            <li key={l.id} className={cn("flex gap-2 rounded px-1", LEVEL_CLASS[l.level])}>
+            <li key={l.id} className={cn("flex gap-2 rounded px-1", LEVEL_CLASS[l.level])} data-level={l.level}>
               <span className="shrink-0 tabular-nums text-mist">{new Date(l.t).toLocaleTimeString([], { hour12: false })}</span>
               <span className="min-w-0 break-words">{l.message}</span>
             </li>

@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowUpRight, Play, Search, Square, X } from "lucide-react";
+import { ArrowUpRight, Play, Search, Sparkle, Square, X } from "lucide-react";
 import type { GraphNode, NodeType, Program, WorkGraph } from "@/lib/synforma/types";
 import { useSynforma } from "@/lib/synforma/store";
 import { Button } from "@/components/ui/button";
@@ -153,7 +153,12 @@ export function GraphWorkbench() {
   const matches = React.useMemo(() => (q ? graph.nodes.filter((n) => n.label.toLowerCase().includes(q) || n.type === q) : []), [graph.nodes, q]);
   const searchHighlight = React.useMemo(() => (q && matches.length <= SEARCH_HIGHLIGHT_CAP ? matches.map((n) => n.id) : []), [q, matches]);
 
-  const highlightNodeIds = flow ? flowHighlight : searchHighlight;
+  // ── Provenance filter: highlight what the planner inferred rather than observed ──
+  const inferredIds = React.useMemo(() => graph.nodes.filter((n) => n.provenance?.trust === "MODEL_INFERRED").map((n) => n.id), [graph.nodes]);
+  const [inferredOnly, setInferredOnly] = React.useState(false);
+  const inferredActive = inferredOnly && inferredIds.length > 0;
+
+  const highlightNodeIds = flow ? flowHighlight : inferredActive ? inferredIds : searchHighlight;
 
   const onSelectNode = React.useCallback((node: GraphNode | null) => {
     setSelectedId(node?.id ?? null);
@@ -294,8 +299,39 @@ export function GraphWorkbench() {
               Show all
             </button>
           ) : null}
+          <span className="mx-1.5 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
+          <button
+            type="button"
+            aria-pressed={inferredActive}
+            disabled={!inferredIds.length}
+            onClick={() => setInferredOnly((v) => !v)}
+            title={inferredIds.length ? "Highlight nodes the planner inferred (trust state MODEL_INFERRED)" : "No node in this graph carries planner provenance"}
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
+              inferredActive ? "border-signal bg-signal-soft text-signal" : "border-line-strong bg-surface text-ink hover:bg-surface-2",
+              !inferredIds.length && "cursor-not-allowed border-transparent text-mist hover:bg-transparent",
+              inferredIds.length > 0 && "cursor-pointer",
+            )}
+            data-testid="graph-inferred-toggle"
+          >
+            <Sparkle className="h-3 w-3" aria-hidden="true" />
+            Inferred only
+            <span className="mono-data text-[10px] text-slate">{inferredIds.length}</span>
+          </button>
         </div>
       </header>
+
+      {inferredActive ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-signal-soft/50 px-4 py-1.5 text-xs text-signal sm:px-6" data-testid="graph-inferred-banner">
+          <span className="font-medium">
+            {inferredIds.length} node{inferredIds.length === 1 ? "" : "s"} inferred by the planner highlighted; everything else was observed on the interface or stated in the
+            objective.
+          </span>
+          <button type="button" onClick={() => setInferredOnly(false)} className="underline-offset-2 hover:underline cursor-pointer">
+            Clear
+          </button>
+        </div>
+      ) : null}
 
       {isSample ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-amber-soft/60 px-4 py-1.5 text-xs text-amber sm:px-6" data-testid="graph-sample-banner">
@@ -364,7 +400,7 @@ export function GraphWorkbench() {
         </div>
 
         <aside className="hidden w-[380px] shrink-0 flex-col overflow-y-auto border-l border-line bg-surface lg:flex scrollbar-thin" aria-label="Node details">
-          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} className="min-h-full" /> : <NodeDetailEmpty />}
+          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} className="min-h-full" plannerKind={program?.planner} /> : <NodeDetailEmpty />}
         </aside>
       </div>
 
@@ -372,7 +408,7 @@ export function GraphWorkbench() {
         <DialogContent side="right" className="max-w-sm p-0 pt-10">
           <DialogTitle className="sr-only">Node details</DialogTitle>
           <DialogDescription className="sr-only">Details of the selected Work Graph node.</DialogDescription>
-          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} /> : null}
+          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} plannerKind={program?.planner} /> : null}
         </DialogContent>
       </Dialog>
     </div>

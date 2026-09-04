@@ -12,7 +12,12 @@ import { HeuristicPlanner } from "@/lib/synforma/planner/heuristic";
 import { runWorkflow } from "@/lib/synforma/engine/runner";
 import { HumanObserver } from "@/lib/synforma/engine/observer";
 import { decide } from "@/lib/synforma/engine/adoption";
-import type { Hypothesis, Intervention, StruggleSignal } from "@/lib/synforma/types";
+import { claimsFromProgram, truthReport, resolveBelief } from "@/lib/synforma/engine/evidence";
+import { defaultContract, stepTrust } from "@/lib/synforma/engine/trust";
+import { rollbackEntries } from "@/lib/synforma/engine/ledger";
+import { DemonstrationRecorder, reconstructWorkflow } from "@/lib/synforma/engine/demonstration";
+import { composeRecap, skillStatus } from "@/lib/synforma/engine/proficiency";
+import type { Claim, Hypothesis, Intervention, LedgerEntry, ParsedObjective, StruggleSignal } from "@/lib/synforma/types";
 import { DEFAULT_CONTEXT, DEFAULT_OBJECTIVE, SANDBOX_APP } from "@/lib/synforma/demo";
 import type { RunEvent, Workflow } from "@/lib/synforma/types";
 
@@ -55,22 +60,90 @@ export default function EngineHarness() {
         (api as Record<string, unknown>).workflow = workflow;
         return { parsed, workflow };
       },
-      async act(context: Record<string, string> = DEFAULT_CONTEXT, approve = true) {
-        const workflow = (api as Record<string, unknown>).workflow as Workflow;
-        const parsed = (api as Record<string, unknown>).parsed as { requirements: never[] };
+      ledger: [] as LedgerEntry[],
+      async act(context: Record<string, string> = DEFAULT_CONTEXT, approve = true, extra: { routineOnly?: boolean; useTrust?: boolean; onlySteps?: string[]; workflowOverride?: Workflow } = {}) {
+        const workflow = extra.workflowOverride ?? ((api as Record<string, unknown>).workflow as Workflow);
+        const parsed = (api as Record<string, unknown>).parsed as ParsedObjective;
         api.events = [];
+        api.ledger = [];
+        const claims = extra.useTrust ? ((api as Record<string, unknown>).claimsData as Claim[] | undefined) : undefined;
         const result = await runWorkflow({
           driver,
           workflow,
           requirements: parsed.requirements,
           context,
           actor: "agent",
+          routineOnly: extra.routineOnly,
+          onlySteps: extra.onlySteps,
+          contract: extra.useTrust ? defaultContract(workflow) : undefined,
+          claims,
+          runId: "run_test",
+          programId: "p_test",
+          intent: workflow.title,
+          decidedBy: "heuristic",
           hooks: {
             onEvent: (type, data, stepId, message) => api.events.push({ type, data, stepId, message }),
             requestApproval: async () => (approve ? "granted" : "denied"),
+            onLedger: (e) => api.ledger.push(e),
           },
         });
-        return { result, events: api.events };
+        return { result, events: api.events, ledger: api.ledger };
+      },
+      async rollback() {
+        const r = await rollbackEntries(driver, api.ledger);
+        return { restored: r.restored.length, skipped: r.skipped.length, page: driver.snapshot().page.fields.map((f) => `${f.name}=${f.value ?? (f.checked ? "checked" : "")}`) };
+      },
+      claims(objectiveOverride?: ParsedObjective) {
+        const states = (api as Record<string, unknown>).states as DiscoveredState[];
+        const graph = (api as Record<string, unknown>).graph as ReturnType<typeof createGraph>;
+        const workflow = (api as Record<string, unknown>).workflow as Workflow;
+        const parsed = objectiveOverride ?? ((api as Record<string, unknown>).parsed as ParsedObjective);
+        const program = { id: "p_test", title: "t", objectiveText: "", application: { name: SANDBOX_APP.name, baseUrl: SANDBOX_APP.baseUrl }, parsed, workflow, graphId: "g", status: "active", planner: "heuristic", createdAt: Date.now(), updatedAt: Date.now() } as unknown as Parameters<typeof claimsFromProgram>[0];
+        const claims = claimsFromProgram(program, graph, states);
+        (api as Record<string, unknown>).claimsData = claims;
+        return { report: truthReport(claims), sample: claims.slice(0, 6).map((c) => `${c.authority} · ${c.statement}`), contested: claims.filter((c) => c.status === "contested").map((c) => c.statement + " — " + (c.reason ?? "")), belief: resolveBelief(claims, "requirement:r2") };
+      },
+      trust() {
+        const workflow = (api as Record<string, unknown>).workflow as Workflow;
+        const claims = ((api as Record<string, unknown>).claimsData as Claim[]) ?? [];
+        const contract = defaultContract(workflow);
+        return { contract: contract.rules.map((r) => `${r.actionClass}: synforma=${r.synforma}`), steps: workflow.steps.map((s) => ({ step: s.title, ...stepTrust(s, workflow, contract, claims) })) };
+      },
+      async replan(objectiveText: string) {
+        const states = (api as Record<string, unknown>).states as DiscoveredState[];
+        const graph = (api as Record<string, unknown>).graph as ReturnType<typeof createGraph>;
+        const parsed = await planner.parseObjective({ objectiveText, appName: SANDBOX_APP.name });
+        const workflow = await planner.inferWorkflow({ parsed, states, graph, startUrl: SANDBOX_APP.baseUrl });
+        (api as Record<string, unknown>).parsed = parsed;
+        (api as Record<string, unknown>).workflow = workflow;
+        return { requirements: parsed.requirements.map((r) => r.text), steps: workflow.steps.map((s) => s.title) };
+      },
+      recorder: null as DemonstrationRecorder | null,
+      startRecording() {
+        api.recorder = new DemonstrationRecorder(driver);
+        api.recorder.start();
+      },
+      reconstruct() {
+        const trace = api.recorder?.stop() ?? [];
+        const states = (api as Record<string, unknown>).states as DiscoveredState[];
+        const parsed = (api as Record<string, unknown>).parsed as ParsedObjective;
+        const planned = (api as Record<string, unknown>).workflow as Workflow;
+        const rec = reconstructWorkflow(trace, { objective: parsed, states, planned, startUrl: SANDBOX_APP.baseUrl, planner: "heuristic" });
+        (api as Record<string, unknown>).demonstrated = rec.workflow;
+        return { traceCount: trace.length, summary: rec.summary, steps: rec.workflow.steps.map((s) => `${s.title} [${s.mode}${s.commit ? ", commit" : ""}] ${s.actions.map((a) => `${a.kind}:${a.targetName}`).join(" ; ")}`), questions: rec.questions.map((q) => q.question), deviations: rec.deviations, version: rec.workflow.version };
+      },
+      recap() {
+        const workflow = (api as Record<string, unknown>).workflow as Workflow;
+        return composeRecap(api.events.map((e, i) => ({ id: String(i), runId: "run_test", t: Date.now(), type: e.type!, stepId: e.stepId, message: e.message, data: e.data })), workflow, "run_test");
+      },
+      skill() {
+        const now = Date.now();
+        return [
+          skillStatus(undefined, "1.0", now),
+          skillStatus({ programId: "p", stepId: "s", assistedRuns: 0, unassistedSuccesses: 1, recentErrors: 0, errorHistory: [false], assistanceLevel: "guide", updatedAt: now, exposures: 1, lastExecutedAt: now }, "1.0", now),
+          skillStatus({ programId: "p", stepId: "s", assistedRuns: 1, unassistedSuccesses: 0, recentErrors: 0, errorHistory: [false, false, false, false], assistanceLevel: "explain", updatedAt: now, exposures: 4, lastExecutedAt: now, workflowVersion: "1.0" }, "1.1", now),
+          skillStatus({ programId: "p", stepId: "s", assistedRuns: 1, unassistedSuccesses: 0, recentErrors: 0, errorHistory: [false, false, false, false], assistanceLevel: "explain", updatedAt: now, exposures: 4, lastExecutedAt: now - 60 * 86_400_000, workflowVersion: "1.0" }, "1.0", now),
+        ];
       },
       frictions: [] as unknown[],
       observe(onSignal: (s: unknown) => void, sensing = true) {

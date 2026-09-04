@@ -291,6 +291,14 @@ export interface Workflow {
   /** Route (pattern) of the outcome screen. */
   outcomeRoutePattern?: string;
   confidence: number;
+  /** Semantic version of this workflow definition ("1.0", "1.1", …). */
+  version?: string;
+  /** Why this version replaced the previous one. */
+  changelog?: { version: string; at: number; reason: string; source: "discovery" | "re-plan" | "demonstration" | "ui-change" }[];
+  /** How this workflow was learned. */
+  origin?: "discovery" | "demonstration";
+  /** Governance lifecycle for machine-discovered process knowledge. */
+  governance?: { status: "discovered" | "reviewed" | "approved" | "approved_with_exceptions" | "rejected"; owner?: string; at?: number; note?: string };
 }
 
 export interface ParsedObjective {
@@ -371,6 +379,10 @@ export type RunEventType =
   | "friction_inferred"
   | "intervention_withheld"
   | "proficiency_updated"
+  | "trust_decision"
+  | "ledger_rollback"
+  | "demonstration_recorded"
+  | "claim_contested"
   | "note";
 
 export interface RunEvent {
@@ -604,6 +616,110 @@ export interface ProficiencyState {
   errorHistory: boolean[];
   assistanceLevel: AssistanceLevel;
   updatedAt: number;
+  /** Times the person has encountered this step (any outcome). */
+  exposures?: number;
+  /** Last time the step was executed by the person. */
+  lastExecutedAt?: number;
+  /** Workflow version at the time the current level was reached. */
+  workflowVersion?: string;
+  /** Times the person asked Synforma to do the step. */
+  assistRequests?: number;
+}
+
+/** Skill status derived from proficiency, elapsed time and workflow change. One success is never mastery. */
+export type SkillStatus = "unknown" | "learning" | "mastered" | "stale";
+
+// ───────────────────────────── Evidence / truth ─────────────────────────────
+
+export type ClaimStatus = "asserted" | "validated" | "contested" | "retired";
+
+/**
+ * A claim is a single assertion Synforma holds about the world, with the
+ * evidence behind it. Disagreements between sources are represented, not
+ * silently resolved.
+ */
+export interface Claim {
+  id: string;
+  programId: string;
+  /** What the claim is about: a node id, "requirement:r1", "workflow:…", "step:…". */
+  subject: string;
+  predicate: string;
+  object: string;
+  /** Human-readable statement. */
+  statement: string;
+  source: Provenance["source"];
+  /** Where exactly: "objective", "screen:/route", "planner:heuristic", "run:<id>", "person". */
+  sourceRef: string;
+  authority: TrustState;
+  confidence: number;
+  /** Scope the claim applies to (population, tenant, UI version). */
+  scope?: string;
+  observedAt: number;
+  validatedBy?: string;
+  validatedAt?: number;
+  /** Claim ids this claim contradicts. */
+  contradicts: string[];
+  supersedes?: string;
+  supersededBy?: string;
+  status: ClaimStatus;
+  reason?: string;
+}
+
+// ───────────────────────────── Trust & autonomy ─────────────────────────────
+
+/**
+ * Action classes for autonomy. Reversibility and consequence drive how much
+ * autonomy an action may receive.
+ */
+export type ActionClass = "A_read" | "B_reversible_write" | "C_consequential_write" | "D_external_or_destructive";
+
+export type AutonomyPolicy = "auto" | "ask" | "never";
+
+export interface AutonomyRule {
+  actionClass: ActionClass;
+  label: string;
+  /** May the person do this at all (as far as Synforma knows)? */
+  human: boolean;
+  /** What Synforma may do on the person's behalf. */
+  synforma: AutonomyPolicy;
+  rationale: string;
+}
+
+/** Every workflow has one. It says what Synforma may do, ask about, or never do on its own. */
+export interface AutonomyContract {
+  workflowId: string;
+  version: number;
+  rules: AutonomyRule[];
+  generatedAt: number;
+  approvedBy?: string;
+  approvedAt?: number;
+}
+
+export type TrustDecision = "act" | "prepare_ask" | "guide" | "ask" | "stop";
+
+// ───────────────────────────── Provenance & rollback ledger ─────────────────────────────
+
+export interface LedgerEntry {
+  id: string;
+  runId: string;
+  programId: string;
+  stepId: string;
+  t: number;
+  requestedBy: RunActor;
+  /** What Synforma believed the intent was. */
+  intent: string;
+  /** Claim ids or requirement ids the action relied on. */
+  reliedOn: string[];
+  decidedBy: PlannerKind | "rule";
+  actionClass: ActionClass;
+  action: { kind: ActionKind; label: string; targetName?: string; targetRole?: ElementRole };
+  before?: { key: string; value: string };
+  after?: { key: string; value: string };
+  approval: "granted" | "denied" | "not_required";
+  result: "ok" | "failed";
+  regrounded?: boolean;
+  rollback: { possible: boolean; method: "restore_value" | "compensating_action" | "none"; reason?: string };
+  rolledBackAt?: number;
 }
 
 // ───────────────────────────── Trust & audit ─────────────────────────────

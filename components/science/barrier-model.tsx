@@ -40,6 +40,14 @@ export function BarrierModel() {
           diagnosis of the person, and the engine stores every hypothesis with its confidence and the signals it rests on.
         </p>
       </Prose>
+      <div className="mt-5 rounded-lg border border-line bg-surface-2/60 p-4" data-testid="barrier-wording-note">
+        <p className="eyebrow">Observable wording</p>
+        <p className="mt-2 text-sm leading-relaxed text-graphite">
+          Each barrier label names what the interface showed or what the person did: a control that is hidden, an input format that produced
+          errors, an action that was found but not committed. Never a state of mind. The engine reaches a barrier through an observed
+          interaction state (section 03), and the label is a sentence a person can check against their own screen.
+        </p>
+      </div>
       <div className="mt-8 divide-y divide-line border-y border-line">
         {COMPONENTS.map((c) => (
           <div key={c.name} className="grid gap-4 py-6 sm:grid-cols-12 sm:gap-6">

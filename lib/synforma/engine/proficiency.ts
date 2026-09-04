@@ -1,4 +1,4 @@
-import type { AssistanceLevel, ProficiencyState, Run, RunEvent, Workflow } from "../types";
+import type { AssistanceLevel, ProficiencyState, Run, RunEvent, SkillStatus, Workflow } from "../types";
 
 /**
  * Proficiency and guidance fading.
@@ -42,8 +42,9 @@ export function stepOutcomesForRun(run: Run, events: RunEvent[], workflow: Workf
 }
 
 /** Apply one run's outcomes to the proficiency state. Pure. */
-export function updateProficiency(prev: ProficiencyState, outcome: RunStepOutcome): { next: ProficiencyState; faded: boolean } {
+export function updateProficiency(prev: ProficiencyState, outcome: RunStepOutcome, workflowVersion?: string): { next: ProficiencyState; faded: boolean } {
   const errorHistory = [...prev.errorHistory, outcome.errors > 0].slice(-5);
+  const exposures = (prev.exposures ?? 0) + 1;
   const recentErrors = errorHistory.filter(Boolean).length;
   let assistedRuns = prev.assistedRuns;
   let unassistedSuccesses = prev.unassistedSuccesses;
@@ -65,7 +66,64 @@ export function updateProficiency(prev: ProficiencyState, outcome: RunStepOutcom
   }
   // Regress one level after two error runs in the last five.
   if (recentErrors >= 2 && levelIndex(assistanceLevel) > levelIndex("guide")) assistanceLevel = "guide";
-  return { next: { ...prev, assistedRuns, unassistedSuccesses, recentErrors, errorHistory, assistanceLevel, updatedAt: Date.now() }, faded };
+  return {
+    next: {
+      ...prev,
+      assistedRuns,
+      unassistedSuccesses,
+      recentErrors,
+      errorHistory,
+      assistanceLevel,
+      exposures,
+      lastExecutedAt: Date.now(),
+      workflowVersion: faded ? (workflowVersion ?? prev.workflowVersion) : (prev.workflowVersion ?? workflowVersion),
+      updatedAt: Date.now(),
+    },
+    faded,
+  };
+}
+
+/**
+ * Skill status. One successful attempt is never mastery; mastery decays with
+ * time and is invalidated when the workflow changed since it was reached.
+ */
+export function skillStatus(p: ProficiencyState | undefined, currentWorkflowVersion: string | undefined, now = Date.now()): { status: SkillStatus; reason: string } {
+  if (!p || (p.exposures ?? 0) === 0) return { status: "unknown", reason: "not attempted yet" };
+  const mastered = levelIndex(p.assistanceLevel) >= levelIndex("explain");
+  if (mastered) {
+    if (currentWorkflowVersion && p.workflowVersion && currentWorkflowVersion !== p.workflowVersion) {
+      return { status: "stale", reason: `mastered on workflow v${p.workflowVersion}; the workflow is now v${currentWorkflowVersion} — a brief refresher on what changed is likely useful` };
+    }
+    const days = p.lastExecutedAt ? (now - p.lastExecutedAt) / 86_400_000 : 0;
+    if (days > 45) return { status: "stale", reason: `last executed ${Math.round(days)} days ago` };
+    return { status: "mastered", reason: `${p.unassistedSuccesses + p.assistedRuns} run(s), level ${p.assistanceLevel}` };
+  }
+  return { status: "learning", reason: `${p.unassistedSuccesses} unassisted success(es) toward fading` };
+}
+
+export const SKILL_LABEL: Record<SkillStatus, string> = { unknown: "Unknown", learning: "Learning", mastered: "Mastered", stale: "Refresher suggested" };
+
+/** Attention is scarce: a per-run budget of interventions. */
+export const DEFAULT_INTERVENTION_BUDGET = 3;
+
+export type AssistanceMode = "learning" | "performance" | "recovery";
+
+/** Contextual mode without inferring mental state: explicit time pressure, or a recent failure. */
+export function deriveMode(input: { getItDone: boolean; recentFailure: boolean; deadlineSoon?: boolean }): AssistanceMode {
+  if (input.recentFailure) return "recovery";
+  if (input.getItDone || input.deadlineSoon) return "performance";
+  return "learning";
+}
+
+/** Teach-after recap computed from events; never invented. */
+export function composeRecap(events: RunEvent[], workflow: Workflow, runId: string): { handled: string[]; decided: string[]; approvals: number; skipped: string[]; text: string } {
+  const mine = events.filter((e) => e.runId === runId);
+  const handled = Array.from(new Set(mine.filter((e) => e.type === "action_executed" && e.data?.ok !== false).map((e) => e.message ?? "").filter((m) => m && !/^Undo/.test(m))));
+  const skipped = mine.filter((e) => e.type === "note" && e.data?.skippedJudgment).map((e) => String(e.data?.skippedJudgment));
+  const approvals = mine.filter((e) => e.type === "approval_granted").length;
+  const decided = skipped.length ? skipped : workflow.steps.filter((s) => s.judgment).map((s) => s.title);
+  const text = `Synforma handled ${handled.length} routine action${handled.length === 1 ? "" : "s"}. You made ${decided.length} decision${decided.length === 1 ? "" : "s"} requiring judgment${approvals ? ` and ${approvals} approval${approvals === 1 ? "" : "s"}` : ""}.`;
+  return { handled, decided, approvals, skipped, text };
 }
 
 /** Interruption multiplier from proficiency: more independent → interventions cost more. */

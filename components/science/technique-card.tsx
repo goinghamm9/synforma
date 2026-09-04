@@ -34,11 +34,15 @@ export function TechniqueCard({ technique }: { technique: InterventionTechnique 
 
         <dt className="eyebrow pt-0.5">Barriers</dt>
         <dd className="flex flex-wrap gap-1.5">
-          {technique.barriers.map((b) => (
-            <Badge key={b} variant="muted">
-              {BARRIER_SHORT[b]}
-            </Badge>
-          ))}
+          {technique.barriers.length ? (
+            technique.barriers.map((b) => (
+              <Badge key={b} variant="muted">
+                {BARRIER_SHORT[b]}
+              </Badge>
+            ))
+          ) : (
+            <span className="text-sm text-slate">None: a policy action, not a response to a barrier.</span>
+          )}
         </dd>
 
         <dt className="eyebrow pt-0.5">Burden</dt>

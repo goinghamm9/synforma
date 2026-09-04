@@ -331,7 +331,7 @@ export function snapshotDocument(doc: Document, url: string): Snapshot {
     return model;
   }
 
-  const headingEls = Array.from(doc.querySelectorAll("h1,h2,h3")).filter(isRendered);
+  const headingEls = Array.from(doc.querySelectorAll("h1,h2,h3,h4,[role='heading']")).filter(isRendered);
   const h1 = headingEls.find((h) => h.tagName.toLowerCase() === "h1");
   const heading = h1 ? headingText(h1) : (doc.title || "").trim();
   const secondaryHeadings = headingEls.filter((h) => h.tagName.toLowerCase() !== "h1").map(headingText);

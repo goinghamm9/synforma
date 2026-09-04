@@ -15,7 +15,7 @@ import type {
   StruggleSignal,
   WorkflowStep,
 } from "../types";
-import { interruptionMultiplier } from "./proficiency";
+import { DEFAULT_INTERVENTION_BUDGET, interruptionMultiplier, type AssistanceMode } from "./proficiency";
 import { shortId } from "@/lib/utils";
 
 /** Observable friction state → COM-B-inspired barrier used by the technique registry. */
@@ -71,6 +71,10 @@ export interface ScoringContext {
   shownThisRun?: number;
   /** ms since the last intervention was shown in this run. */
   sinceLastShownMs?: number;
+  /** Interventions allowed per run (attention budget). */
+  budget?: number;
+  /** learning | performance | recovery. */
+  mode?: AssistanceMode;
 }
 
 export function scoreTechnique(t: InterventionTechnique, ctx: ScoringContext): InterventionScore {
@@ -151,14 +155,18 @@ export function scoreTechnique(t: InterventionTechnique, ctx: ScoringContext): I
     explanation.push("Preference: just do it");
   }
   if (pref === "stay_out" && t.mode === "guide") contextFit *= 0.6;
-  if (ctx.getItDone) {
+  if (ctx.getItDone || ctx.mode === "performance") {
     if (t.mode === "guide" && t.id !== "clarify_consequence" && t.id !== "policy_clarification") {
       contextFit *= 0.5;
-      explanation.push("Get It Done: instruction deferred");
+      explanation.push("Performance mode: instruction deferred");
     } else if (t.mode !== "guide") {
       contextFit = Math.min(1, contextFit + 0.25);
-      explanation.push("Get It Done: assistance preferred");
+      explanation.push("Performance mode: assistance preferred");
     }
+  }
+  if (ctx.mode === "recovery" && (t.id === "format_example" || t.id === "prefill_assist" || t.id === "inline_explanation")) {
+    contextFit = Math.min(1, contextFit + 0.2);
+    explanation.push("Recovery mode after a failure: concrete help preferred");
   }
 
   const repetitionPenalty = Math.min(0.3, relevant.length * 0.15) + (ctx.shownThisRun && ctx.sinceLastShownMs !== undefined && ctx.sinceLastShownMs < 20_000 ? 0.25 : 0);
@@ -202,6 +210,11 @@ export function scoreDoNothing(ctx: ScoringContext): InterventionScore {
     total -= 0.15;
     explanation.push("Hesitation before a commit is worth a one-line clarification");
   }
+  const budget = ctx.budget ?? DEFAULT_INTERVENTION_BUDGET;
+  if ((ctx.shownThisRun ?? 0) >= budget) {
+    total += 0.6;
+    explanation.push(`Intervention budget spent (${ctx.shownThisRun}/${budget} this run)`);
+  }
   return { barrierFit: 0, contextFit: 1, evidenceWeight: EVIDENCE_WEIGHT.theoretical, previousSuccess: 0.5, repetitionPenalty: 0, burdenPenalty: 0, total: Math.round(total * 1000) / 1000, explanation };
 }
 
@@ -242,6 +255,8 @@ export interface AdoptionDeps {
   proficiency?: ProficiencyState;
   shownThisRun?: number;
   sinceLastShownMs?: number;
+  budget?: number;
+  mode?: AssistanceMode;
 }
 
 /**
@@ -289,6 +304,8 @@ export async function decide(signal: StruggleSignal, deps: AdoptionDeps): Promis
     proficiency: deps.proficiency,
     shownThisRun: deps.shownThisRun,
     sinceLastShownMs: deps.sinceLastShownMs,
+    budget: deps.budget,
+    mode: deps.mode,
   };
   const ranked = rankTechniques(ctx);
   const candidates = ranked.map((r) => ({ techniqueId: r.technique.id, total: r.score.total }));

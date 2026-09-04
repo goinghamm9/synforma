@@ -3,11 +3,17 @@ import { useSyncExternalStore } from "react";
 import { Skeleton } from "@/components/ui";
 import { useSynforma } from "@/lib/synforma/store";
 import { AboutSection } from "./about-section";
+import { AssistanceSection } from "./assistance-section";
 import { DataSection } from "./data-section";
+import { IndependenceSection } from "./independence-section";
 import { ObservationSection } from "./observation-section";
 import { PlannerSection } from "./planner-section";
+import { SensingSection } from "./sensing-section";
 
 const CONTENTS: { id: string; label: string }[] = [
+  { id: "assistance", label: "How Synforma helps" },
+  { id: "sensing", label: "Interaction sensing" },
+  { id: "independence", label: "Your independence" },
   { id: "planner", label: "Planner" },
   { id: "observation", label: "Observation" },
   { id: "data", label: "Data" },
@@ -30,7 +36,10 @@ export function SettingsView() {
       <header>
         <p className="eyebrow">Settings</p>
         <h1 className="display mt-5 text-balance text-4xl text-ink sm:text-5xl">Settings</h1>
-        <p className="mt-5 max-w-2xl text-lg leading-relaxed text-graphite">Planner, observation thresholds, experiment split, and the data this browser holds. Changes save immediately.</p>
+        <p className="mt-5 max-w-2xl text-lg leading-relaxed text-graphite">
+          How Synforma helps you, what it senses, how much guidance you still want, the planner, observation thresholds, the experiment split, and the
+          data this browser holds. Changes save immediately.
+        </p>
         <nav aria-label="Contents" className="mt-6">
           <ol className="flex flex-wrap gap-x-5 gap-y-2">
             {CONTENTS.map((c, i) => (
@@ -48,13 +57,16 @@ export function SettingsView() {
       <div className="mt-12 space-y-12 sm:mt-14 sm:space-y-14">
         {ready ? (
           <>
+            <AssistanceSection />
+            <SensingSection />
+            <IndependenceSection />
             <PlannerSection />
             <ObservationSection />
             <DataSection />
           </>
         ) : (
           <div aria-busy="true" aria-label="Loading settings" className="space-y-12">
-            {[0, 1, 2].map((i) => (
+            {[0, 1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="border-t border-line pt-8">
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="mt-4 h-7 w-56" />
