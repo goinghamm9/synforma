@@ -165,7 +165,9 @@ export function useGuideRun(program: Program, iframeRef: React.RefObject<HTMLIFr
 
   // Until the server has answered, assume no live LLM is configured (never claim more than is known).
   const plannerKind: PlannerKind = plannerStatus ? resolvePlannerKind(settings.plannerPreference, plannerStatus) : "heuristic";
-  plannerKindRef.current = plannerKind;
+  useEffect(() => {
+    plannerKindRef.current = plannerKind;
+  }, [plannerKind]);
 
   // ─────────────── driver (one per iframe) ───────────────
 
@@ -486,11 +488,13 @@ export function useGuideRun(program: Program, iframeRef: React.RefObject<HTMLIFr
 
   // Leaving the page mid-run counts as abandonment; never leave a run without an outcome.
   const abandonRef = useRef<() => void>(() => {});
-  abandonRef.current = () => {
-    if (phaseRef.current !== "running") return;
-    record("run_abandoned", { reason: "left the page" }, currentStepRef.current?.id, "Run abandoned: left the page");
-    finishRun("abandoned", {}, "left the page");
-  };
+  useEffect(() => {
+    abandonRef.current = () => {
+      if (phaseRef.current !== "running") return;
+      record("run_abandoned", { reason: "left the page" }, currentStepRef.current?.id, "Run abandoned: left the page");
+      finishRun("abandoned", {}, "left the page");
+    };
+  }, [finishRun, record]);
   useEffect(() => {
     return () => {
       abandonRef.current();

@@ -26,11 +26,6 @@ interface Props {
  * 1:1 onto the overlay layer positioned over the iframe.
  */
 export function TargetFrame({ iframeRef, title, connected, connecting, currentUrl, busy, cursor, highlight, onConnect, className }: Props) {
-  // Keep the last cursor position so the ring fades out in place and animates from there next time.
-  const lastCursor = React.useRef<OverlayTarget | null>(null);
-  if (cursor) lastCursor.current = cursor;
-  const shown = cursor ?? lastCursor.current;
-
   return (
     <div className={cn("flex h-full min-h-0 flex-col bg-surface", className)}>
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-3 text-xs">
@@ -47,27 +42,27 @@ export function TargetFrame({ iframeRef, title, connected, connecting, currentUr
 
         <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
           <div
-            className={cn("absolute rounded-md border-2 border-ink/80 bg-ink/[0.04] transition-all duration-300 ease-out", highlight ? "opacity-100" : "opacity-0")}
+            className={cn("absolute rounded-md border-2 border-ink/80 bg-ink/[0.04] transition-all duration-300 ease-out", highlight?.visible ? "opacity-100" : "opacity-0")}
             style={
               highlight
                 ? { left: highlight.rect.x - 3, top: highlight.rect.y - 3, width: highlight.rect.w + 6, height: highlight.rect.h + 6 }
                 : { left: 0, top: 0, width: 0, height: 0 }
             }
           >
-            {highlight?.label ? (
+            {highlight?.visible && highlight.label ? (
               <span className="absolute -top-6 left-0 max-w-[280px] truncate rounded bg-ink px-1.5 py-0.5 text-[11px] font-medium text-paper">{highlight.label}</span>
             ) : null}
           </div>
 
-          {shown ? (
+          {cursor ? (
             <div
-              className={cn("absolute left-0 top-0 transition-[transform,opacity] duration-300 ease-out", cursor ? "opacity-100" : "opacity-0")}
-              style={{ transform: `translate(${shown.rect.x + shown.rect.w / 2}px, ${shown.rect.y + shown.rect.h / 2}px)` }}
+              className={cn("absolute left-0 top-0 transition-[transform,opacity] duration-300 ease-out", cursor.visible ? "opacity-100" : "opacity-0")}
+              style={{ transform: `translate(${cursor.rect.x + cursor.rect.w / 2}px, ${cursor.rect.y + cursor.rect.h / 2}px)` }}
             >
               <span className="absolute -left-2.5 -top-2.5 block h-5 w-5 rounded-full border-2 border-ink bg-paper/70 shadow-[0_0_0_2px_rgba(250,250,247,0.9)]" />
               <span className="absolute left-3 top-2 block h-2 w-2 rounded-full bg-ink" />
-              {shown.label ? (
-                <span className="absolute left-4 top-4 max-w-[260px] truncate whitespace-nowrap rounded bg-ink px-1.5 py-0.5 text-[11px] font-medium text-paper shadow-md">{shown.label}</span>
+              {cursor.visible && cursor.label ? (
+                <span className="absolute left-4 top-4 max-w-[260px] truncate whitespace-nowrap rounded bg-ink px-1.5 py-0.5 text-[11px] font-medium text-paper shadow-md">{cursor.label}</span>
               ) : null}
             </div>
           ) : null}

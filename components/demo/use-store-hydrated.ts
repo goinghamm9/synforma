@@ -1,25 +1,31 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useSynforma } from "@/lib/synforma/store";
+
+function subscribe(onChange: () => void): () => void {
+  const persist = useSynforma.persist;
+  if (!persist) return () => {};
+  const offFinish = persist.onFinishHydration(onChange);
+  const offStart = persist.onHydrate(onChange);
+  return () => {
+    offFinish();
+    offStart();
+  };
+}
+
+function getSnapshot(): boolean {
+  return useSynforma.persist?.hasHydrated() ?? true;
+}
+
+function getServerSnapshot(): boolean {
+  return false;
+}
 
 /**
  * Reactive hydration guard. The persisted store rehydrates after mount, so the
- * first client render must show a skeleton rather than empty data.
+ * server render and the first client render show a skeleton rather than empty
+ * data; the component re-renders once hydration finishes.
  */
 export function useStoreHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => {
-    const persist = useSynforma.persist;
-    if (!persist) {
-      setHydrated(true);
-      return;
-    }
-    if (persist.hasHydrated()) {
-      setHydrated(true);
-      return;
-    }
-    const unsubscribe = persist.onFinishHydration(() => setHydrated(true));
-    return unsubscribe;
-  }, []);
-  return hydrated;
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

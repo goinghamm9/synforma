@@ -42,6 +42,8 @@ export interface LogLine {
 export interface OverlayTarget {
   rect: ElementRect;
   label?: string;
+  /** False once the driver cleared the target: the overlay fades out in place. */
+  visible: boolean;
 }
 
 export type UiVariant = "v1" | "v2";

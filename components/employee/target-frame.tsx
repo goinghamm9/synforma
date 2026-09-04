@@ -102,7 +102,7 @@ export const TargetFrame = forwardRef<HTMLIFrameElement, TargetFrameProps>(funct
             >
               <span
                 className={cn(
-                  "absolute left-0 max-w-[260px] truncate rounded px-1.5 py-0.5 text-[11px] font-medium leading-4 text-paper",
+                  "absolute right-0 max-w-[260px] truncate rounded px-1.5 py-0.5 text-[11px] font-medium leading-4 text-paper",
                   highlight.rect.y > 28 ? "bottom-full mb-1" : "top-full mt-1",
                   highlight.kind === "assistance" ? "bg-signal" : "bg-ink",
                 )}
