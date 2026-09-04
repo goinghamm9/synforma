@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+/*
+  SYNFORMA design tokens.
+  Palette is deliberately restrained: paper, ink, graphite, warm grays.
+  One signal color (oxide) for attention, one verdant for confirmed outcomes.
+*/
+:root {
+  color-scheme: light;
+  --paper: #fafaf7;
+  --surface: #ffffff;
+  --surface-2: #f3f2ee;
+  --surface-3: #ebe9e3;
+  --ink: #0b0b0c;
+  --graphite: #3a3a3c;
+  --slate: #6b6b70;
+  --mist: #9a9a9e;
+  --line: #e4e2dd;
+  --line-strong: #cfccc5;
+  --signal: #b4532a;
+  --signal-soft: #f4e6df;
+  --verdant: #2f6b4f;
+  --verdant-soft: #e3ede7;
+  --amber: #8a6a1f;
+  --amber-soft: #f2ead6;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-graphite: var(--graphite);
+  --color-slate: var(--slate);
+  --color-mist: var(--mist);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-verdant: var(--verdant);
+  --color-verdant-soft: var(--verdant-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 10px);
+}
+
+html {
+  background: var(--paper);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11", "liga";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Fine structural lines inspired by the neural paths in the mark. */
+.hairline {
+  border-color: var(--line);
+}
+.grid-paper {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--line) 70%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--line) 70%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+.dot-paper {
+  background-image: radial-gradient(color-mix(in oklab, var(--line-strong) 90%, transparent) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--slate);
+  font-weight: 500;
+}
+.display {
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  font-weight: 500;
+}
+.mono-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+@keyframes synforma-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.pulse-dot {
+  animation: synforma-pulse 1.6s ease-in-out infinite;
+}
+@keyframes synforma-dash {
+  to { stroke-dashoffset: -24; }
+}
+.flow-line {
+  stroke-dasharray: 4 8;
+  animation: synforma-dash 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
