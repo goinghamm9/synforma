@@ -16,7 +16,7 @@ import { OrbitControls } from "@react-three/drei/core/OrbitControls";
 import { Html } from "@react-three/drei/web/Html";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { GraphEdge, GraphNode, NodeType } from "@/lib/synforma/types";
-import { COLORS, LAYER_COUNT, LAYER_NAMES, LAYER_OF, NODE_RADIUS, TYPE_LABEL, TYPE_ORDER } from "./constants";
+import { COLORS, LAYER_COUNT, LAYER_NAMES, LAYER_OF, NODE_RADIUS, TYPE_LABEL } from "./constants";
 import { hashString, layerY, type Bounds, type PositionMap } from "./layout";
 
 export interface GraphSceneProps {
@@ -503,7 +503,7 @@ function FlowParticles({ active, enabled }: { active: readonly ActiveEdge[]; ena
         edge.points[i0 + 2] + (edge.points[i1 + 2] - edge.points[i0 + 2]) * k,
       );
       const travel = edge.reversed ? 1 - u : u;
-      const size = 0.05 * (0.5 + 0.5 * Math.sin(travel * Math.PI));
+      const size = 0.085 * (0.55 + 0.45 * Math.sin(travel * Math.PI));
       scl.set(size, size, size);
       matrix.compose(pos, quat, scl);
       mesh.setMatrixAt(i, matrix);
@@ -553,6 +553,20 @@ interface LabelsProps {
 
 const labelShadow = { textShadow: `0 0 3px ${COLORS.paper}, 0 0 6px ${COLORS.paper}, 0 1px 0 ${COLORS.paper}` };
 
+/** Label priority when labels compete for screen space. */
+const LABEL_PRIORITY: readonly NodeType[] = ["workflow", "objective", "outcome", "requirement", "policy", "step", "intervention", "screen", "application", "role", "person", "capability", "object", "action", "field"];
+
+interface Rect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+function intersects(a: Rect, b: Rect): boolean {
+  return a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+}
+
 function Labels({ nodes, nodeById, positions, visibleTypes, labelTypes, selectedId, hoveredId, compact }: LabelsProps) {
   const typeLabels = React.useMemo(() => {
     if (compact) return [] as GraphNode[];
@@ -561,7 +575,7 @@ function Labels({ nodes, nodeById, positions, visibleTypes, labelTypes, selected
       if (!labelTypes.has(n.type) || !visibleTypes.has(n.type) || !positions.has(n.id)) continue;
       out.push(n);
     }
-    out.sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type));
+    out.sort((a, b) => LABEL_PRIORITY.indexOf(a.type) - LABEL_PRIORITY.indexOf(b.type));
     return out.slice(0, MAX_TYPE_LABELS);
   }, [nodes, labelTypes, visibleTypes, positions, compact]);
 
@@ -570,13 +584,59 @@ function Labels({ nodes, nodeById, positions, visibleTypes, labelTypes, selected
   const selectedPos = selected ? positions.get(selected.id) : undefined;
   const hoveredPos = hovered ? positions.get(hovered.id) : undefined;
 
+  // Screen-space de-confliction: greedy by priority, every 4th frame, DOM writes only on change.
+  const elements = React.useRef<Map<string, HTMLElement>>(new Map());
+  const shown = React.useRef<Map<string, boolean>>(new Map());
+  const frame = React.useRef(0);
+  const v = React.useMemo(() => new THREE.Vector3(), []);
+  const setRef = React.useCallback((id: string) => (el: HTMLDivElement | null) => {
+    const map = elements.current;
+    if (el) map.set(id, el);
+    else map.delete(id);
+  }, []);
+
+  useFrame(({ camera, size }) => {
+    if (typeLabels.length === 0) return;
+    if ((frame.current++ & 3) !== 0) return;
+    const placed: Rect[] = [];
+    const reserve = (node: GraphNode, p: { x: number; y: number; z: number }, lift: number, w: number, h: number) => {
+      v.set(p.x, p.y + lift, p.z).project(camera);
+      if (v.z > 1) return;
+      const sx = ((v.x + 1) / 2) * size.width;
+      const sy = ((1 - v.y) / 2) * size.height;
+      placed.push({ x0: sx - w / 2, y0: sy - h, x1: sx + w / 2, y1: sy });
+    };
+    if (selected && selectedPos) reserve(selected, selectedPos, NODE_RADIUS[selected.type] * 1.9 + 0.06, Math.min(236, selected.label.length * 6.6 + 18), 36);
+    if (hovered && hoveredPos) reserve(hovered, hoveredPos, NODE_RADIUS[hovered.type] * 1.4 + 0.06, Math.min(236, hovered.label.length * 6.6 + 18), 36);
+    for (const n of typeLabels) {
+      if (n.id === selectedId || n.id === hoveredId) continue;
+      const p = positions.get(n.id);
+      if (!p) continue;
+      v.set(p.x, p.y + NODE_RADIUS[n.type] + 0.12, p.z).project(camera);
+      let visible = v.z <= 1;
+      if (visible) {
+        const sx = ((v.x + 1) / 2) * size.width;
+        const sy = ((1 - v.y) / 2) * size.height;
+        const w = Math.min(160, n.label.length * 6.2 + 6);
+        const rect: Rect = { x0: sx - w / 2, y0: sy - 13, x1: sx + w / 2, y1: sy + 1 };
+        visible = !placed.some((r) => intersects(r, rect));
+        if (visible) placed.push(rect);
+      }
+      if (shown.current.get(n.id) !== visible) {
+        shown.current.set(n.id, visible);
+        const el = elements.current.get(n.id);
+        if (el) el.style.visibility = visible ? "visible" : "hidden";
+      }
+    }
+  });
+
   return (
     <>
       {typeLabels.map((n) => {
         if (n.id === selectedId || n.id === hoveredId) return null;
         const p = positions.get(n.id)!;
         return (
-          <Html key={n.id} position={[p.x, p.y + NODE_RADIUS[n.type] + 0.12, p.z]} center zIndexRange={[3, 0]} style={{ pointerEvents: "none" }}>
+          <Html key={n.id} ref={setRef(n.id)} position={[p.x, p.y + NODE_RADIUS[n.type] + 0.12, p.z]} center zIndexRange={[3, 0]} style={{ pointerEvents: "none" }}>
             <span className="block max-w-[160px] -translate-y-1/2 truncate whitespace-nowrap text-[11px] leading-none text-graphite" style={labelShadow}>
               {n.label}
             </span>
@@ -673,10 +733,18 @@ function CameraRig({ bounds, fitTick, controlsRef, interactedRef, reducedMotion 
 
     const { camera, scene } = get();
     const cam = camera as THREE.PerspectiveCamera;
-    const fov = (cam.fov * Math.PI) / 180;
+    const vfov = (cam.fov * Math.PI) / 180;
     const aspect = size.width > 0 && size.height > 0 ? size.width / size.height : 1;
-    const effFov = aspect < 1 ? 2 * Math.atan(Math.tan(fov / 2) * aspect) : fov;
-    const dist = bounds.radius / Math.sin(effFov / 2) * 1.05 + 0.5;
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
+    // Box-aware fit: wide flat graphs should fill the width, tall ones the height.
+    const extentX = bounds.max.x - bounds.min.x;
+    const extentY = bounds.max.y - bounds.min.y;
+    const extentZ = bounds.max.z - bounds.min.z;
+    const footprint = Math.max(extentX, extentZ) / 2;
+    const margin = 0.6;
+    const distV = (extentY / 2 + margin + footprint * VIEW_DIR.y * 0.45) / Math.tan(vfov / 2);
+    const distH = (footprint * 0.9 + margin) / Math.tan(hfov / 2);
+    const dist = Math.max(distV, distH, 3) + footprint * 0.3;
     const center = new THREE.Vector3(bounds.center.x, bounds.center.y, bounds.center.z);
     const to = center.clone().addScaledVector(VIEW_DIR, dist);
     cam.near = Math.max(0.05, dist * 0.01);

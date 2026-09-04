@@ -14,8 +14,8 @@ export function Eyebrow({ children, className }: { children: React.ReactNode; cl
 
 export function PanelHeader({ eyebrow, title, description, aside }: { eyebrow: string; title: string; description?: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0 flex-1 basis-[260px]">
         <Eyebrow>{eyebrow}</Eyebrow>
         <h2 className="display mt-1 text-xl text-ink">{title}</h2>
         {description ? <p className="mt-1.5 text-sm leading-relaxed text-graphite">{description}</p> : null}
@@ -89,19 +89,27 @@ export function OutcomeBadge({ outcome }: { outcome?: RunOutcome }) {
 export function ActorBadge({ actor, persona }: { actor: "agent" | "human" | "synthetic"; persona?: string }) {
   if (actor === "synthetic")
     return (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        <Badge variant="amber">Synthetic · simulation</Badge>
-        {persona ? <span className="text-xs text-graphite">{persona}</span> : null}
+      <span className="inline-flex flex-col items-start gap-0.5">
+        <Badge variant="amber" className="whitespace-nowrap">
+          Synthetic · simulation
+        </Badge>
+        {persona ? <span className="whitespace-nowrap text-xs text-graphite">{persona}</span> : null}
       </span>
     );
   if (actor === "human")
     return (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        <Badge variant="outline">Human</Badge>
-        {persona ? <span className="text-xs text-graphite">{persona}</span> : null}
+      <span className="inline-flex flex-col items-start gap-0.5">
+        <Badge variant="outline" className="whitespace-nowrap">
+          Human
+        </Badge>
+        {persona ? <span className="whitespace-nowrap text-xs text-graphite">{persona}</span> : null}
       </span>
     );
-  return <Badge variant="default">Agent</Badge>;
+  return (
+    <Badge variant="default" className="whitespace-nowrap">
+      Agent
+    </Badge>
+  );
 }
 
 export function EmptyState({ icon: Icon, title, body, action }: { icon?: React.ComponentType<{ className?: string }>; title: string; body?: React.ReactNode; action?: React.ReactNode }) {

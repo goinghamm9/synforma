@@ -167,6 +167,13 @@ export function MissionControl() {
   const connected = connection.status === "connected";
   const plannerKind: PlannerKind | null = program ? program.planner : plannerStatus ? resolvePlannerKind(settings.plannerPreference, plannerStatus) : null;
   const plannerLabel = plannerLabelFor(plannerKind, plannerStatus);
+  const plannerName = plannerKind === "gemini" ? "Gemini planner" : "heuristic planner";
+
+  /** Fade the agent cursor and highlight out in place once the engine is done with the iframe. */
+  const hideOverlays = React.useCallback(() => {
+    setCursor((c) => (c ? { ...c, visible: false } : null));
+    setHighlight((h) => (h ? { ...h, visible: false } : null));
+  }, []);
 
   const mkLine = React.useCallback((level: LogLevel, message: string): LogLine => ({ id: ++logSeq.current, t: Date.now(), level, message }), []);
   const pushDiscoveryLog = React.useCallback(
@@ -359,6 +366,7 @@ export function MissionControl() {
           },
         });
         driverLogSink.current = null;
+        hideOverlays();
         if (graphTimer.current) {
           window.clearTimeout(graphTimer.current);
           graphTimer.current = null;
@@ -384,11 +392,12 @@ export function MissionControl() {
         await plan(prog, states, graph, kind);
       } catch (e) {
         driverLogSink.current = null;
+        hideOverlays();
         setDiscovery((d) => ({ ...d, status: "error", error: errorMessage(e) }));
         patchProgram(prog.id, { status: "draft" });
       }
     },
-    [plan, pushDiscoveryLog, setPhase],
+    [hideOverlays, plan, pushDiscoveryLog, setPhase],
   );
 
   const startDiscovery = React.useCallback(
@@ -559,6 +568,7 @@ export function MissionControl() {
         },
       });
       driverLogSink.current = null;
+      hideOverlays();
       const endedAt = Date.now();
       useSynforma.getState().updateRun(runId, { endedAt, outcome: result.outcome, requirementsMet: result.requirementsMet, regroundings: result.regroundings });
       setAct((a) => ({ ...a, status: "done", result, endedAt, regroundings: result.regroundings, currentStepId: null }));
@@ -568,6 +578,7 @@ export function MissionControl() {
       else toast.warning(`Run ${result.outcome}${result.error ? `: ${result.error}` : ""}`);
     } catch (e) {
       driverLogSink.current = null;
+      hideOverlays();
       const aborted = ac.signal.aborted;
       const endedAt = Date.now();
       const store = useSynforma.getState();
@@ -576,7 +587,7 @@ export function MissionControl() {
       store.addAudit({ actor: "agent", action: aborted ? "Run stopped by operator" : "Run failed", runId, programId: prog.id, detail: aborted ? undefined : errorMessage(e) });
       setAct((a) => ({ ...a, status: aborted ? "stopped" : "error", error: aborted ? null : errorMessage(e), endedAt, currentStepId: null }));
     }
-  }, [context, programId, pushActLog]);
+  }, [context, hideOverlays, programId, pushActLog]);
 
   const stopRun = React.useCallback(() => {
     abortRef.current?.abort();
@@ -703,13 +714,14 @@ export function MissionControl() {
       setSynth((st) => ({ ...st, completed }));
     }
     await reactChain;
+    hideOverlays();
     setCurrentUrl(driver.currentUrl());
     const stopped = ac.signal.aborted;
     setSynth({ status: stopped ? "stopped" : "done", currentPersonaId: null, completed, error: null });
     toast(stopped ? `Simulation stopped after ${completed} synthetic run${completed === 1 ? "" : "s"}` : `${completed} synthetic runs finished (simulation)`, {
       description: newInterventions ? `${newInterventions} intervention${newInterventions === 1 ? "" : "s"} proposed from observed struggle` : "No new interventions proposed",
     });
-  }, [context, programId]);
+  }, [context, hideOverlays, programId]);
 
   const stopSynthetic = React.useCallback(() => abortRef.current?.abort(), []);
 
@@ -826,6 +838,7 @@ export function MissionControl() {
         program={program}
         liveGraph={graphForPreview}
         plannerLabel={plannerLabel}
+        plannerName={plannerName}
         engineBusy={discovery.status === "running" || act.status === "running" || synth.status === "running" || uiBusy}
         onStop={stopDiscovery}
         onRestart={restartDiscovery}
@@ -833,7 +846,8 @@ export function MissionControl() {
       />
     );
   else if (!program) panel = <PanelSkeleton />;
-  else if (phase === "understand") panel = <UnderstandPanel program={program} plannerLabel={plannerLabel} onApprove={approveProgram} onEdit={() => setPhase("objective")} />;
+  else if (phase === "understand")
+    panel = <UnderstandPanel program={program} plannerLabel={plannerLabel} plannerName={plannerName} onApprove={approveProgram} onEdit={() => setPhase("objective")} onDiscover={() => setPhase("discover")} />;
   else if (phase === "act")
     panel = (
       <ActPanel
@@ -841,7 +855,7 @@ export function MissionControl() {
         program={program}
         uiVariant={uiVariant}
         uiBusy={uiBusy}
-        plannerLabel={plannerLabel}
+        plannerName={plannerName}
         requireApproval={settings.requireApprovalForCommit}
         agentRuns={programRuns.filter((r) => r.actor === "agent")}
         onRun={() => void runAct()}

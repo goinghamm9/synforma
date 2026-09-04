@@ -6,6 +6,7 @@ import type {
   AuditEntry,
   Hypothesis,
   Intervention,
+  ProficiencyState,
   Program,
   Run,
   RunEvent,
@@ -36,9 +37,12 @@ export interface SynformaState {
   interventions: Record<string, Intervention>;
   audit: AuditEntry[];
   approvals: Record<string, ApprovalRequest>;
+  /** Keyed by `${programId}/${stepId}`. */
+  proficiency: Record<string, ProficiencyState>;
   settings: SynformaSettings;
   activeProgramId: string | null;
 
+  setProficiency: (p: ProficiencyState) => void;
   upsertProgram: (p: Program) => void;
   setActiveProgram: (id: string | null) => void;
   saveGraph: (g: WorkGraph) => void;
@@ -70,6 +74,7 @@ const empty = () => ({
   interventions: {},
   audit: [] as AuditEntry[],
   approvals: {},
+  proficiency: {} as Record<string, ProficiencyState>,
   settings: DEFAULT_SETTINGS,
   activeProgramId: null as string | null,
 });
@@ -78,6 +83,7 @@ export const useSynforma = create<SynformaState>()(
   persist(
     (set, get) => ({
       ...empty(),
+      setProficiency: (p) => set((s) => ({ proficiency: { ...s.proficiency, [`${p.programId}/${p.stepId}`]: p } })),
       upsertProgram: (p) => set((s) => ({ programs: { ...s.programs, [p.id]: { ...p, updatedAt: Date.now() } } })),
       setActiveProgram: (id) => set({ activeProgramId: id }),
       saveGraph: (g) => set((s) => ({ graphs: { ...s.graphs, [g.id]: { ...g, nodes: g.nodes.map((n) => ({ ...n })), edges: g.edges.map((e) => ({ ...e })) } } })),
@@ -124,13 +130,14 @@ export const useSynforma = create<SynformaState>()(
           const hypotheses = Object.fromEntries(Object.entries(s.hypotheses).filter(([, h]) => h.programId !== id));
           const interventions = Object.fromEntries(Object.entries(s.interventions).filter(([, i]) => i.programId !== id));
           const approvals = Object.fromEntries(Object.entries(s.approvals).filter(([, a]) => !runIds.has(a.runId)));
-          return { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, approvals, activeProgramId: s.activeProgramId === id ? null : s.activeProgramId };
+          const proficiency = Object.fromEntries(Object.entries(s.proficiency).filter(([, p]) => p.programId !== id));
+          return { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, approvals, proficiency, activeProgramId: s.activeProgramId === id ? null : s.activeProgramId };
         }),
       resetAll: () => set(empty()),
       exportJSON: () => {
         const s = get();
-        const { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, settings } = s;
-        return JSON.stringify({ exportedAt: new Date().toISOString(), programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, settings }, null, 2);
+        const { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, settings } = s;
+        return JSON.stringify({ exportedAt: new Date().toISOString(), programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, settings }, null, 2);
       },
       importJSON: (json) => {
         try {
@@ -157,9 +164,11 @@ export const useSynforma = create<SynformaState>()(
         interventions: s.interventions,
         audit: s.audit,
         approvals: s.approvals,
+        proficiency: s.proficiency,
         settings: s.settings,
         activeProgramId: s.activeProgramId,
       }),
+      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<SynformaState>), settings: { ...DEFAULT_SETTINGS, ...((persisted as Partial<SynformaState>)?.settings ?? {}) } }),
     },
   ),
 );

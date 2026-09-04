@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { AlertTriangle, Clock, CornerUpLeft, MapPinOff, XCircle } from "lucide-react";
+import { AlertTriangle, Clock, CornerUpLeft, MapPinOff, XCircle, Search, HelpCircle } from "lucide-react";
 import { formatDuration } from "@/lib/utils";
 import type { StruggleSignal, StruggleType } from "@/lib/synforma/types";
 
@@ -10,6 +10,9 @@ const SIGNAL_META: Record<StruggleType, { label: string; Icon: typeof Clock }> =
   backtrack: { label: "Backtrack", Icon: CornerUpLeft },
   wrong_screen: { label: "Wrong screen", Icon: MapPinOff },
   abandon: { label: "Abandon", Icon: XCircle },
+  visual_search: { label: "Visual search", Icon: Search },
+  decision_uncertainty: { label: "Decision uncertainty", Icon: HelpCircle },
+  error_recovery: { label: "Error recovery", Icon: AlertTriangle },
 };
 
 function clock(ms: number): string {

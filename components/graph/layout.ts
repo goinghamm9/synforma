@@ -26,7 +26,7 @@ export interface Bounds {
   max: Vec3;
 }
 
-export const LAYER_GAP = 2.3;
+export const LAYER_GAP = 2.6;
 
 export function layerY(layer: number): number {
   return ((LAYER_COUNT - 1) / 2 - layer) * LAYER_GAP;
@@ -128,10 +128,10 @@ export function relaxLayout(
       }
     }
     if (c > 0) {
-      xs[i] = sx / c + (rng() - 0.5) * 1.4;
-      zs[i] = sz / c + (rng() - 0.5) * 1.4;
+      xs[i] = sx / c + (rng() - 0.5) * 2.4;
+      zs[i] = sz / c + (rng() - 0.5) * 2.4;
     } else {
-      const spread = Math.max(1, 0.7 * Math.sqrt(layerCount[layer[i]]));
+      const spread = Math.max(1.5, 1.05 * Math.sqrt(layerCount[layer[i]]));
       const angle = rng() * Math.PI * 2;
       const r = spread * Math.sqrt(rng());
       xs[i] = Math.cos(angle) * r;
@@ -143,10 +143,10 @@ export function relaxLayout(
   const byLayer: number[][] = Array.from({ length: LAYER_COUNT }, () => []);
   for (let i = 0; i < n; i++) byLayer[layer[i]].push(i);
 
-  const iterations = options.iterations ?? (movableCount === n ? 220 : 150);
+  const iterations = options.iterations ?? (movableCount === n ? 300 : 160);
   const fx = new Float64Array(n);
   const fz = new Float64Array(n);
-  const CUTOFF2 = 3.2 * 3.2;
+  const CUTOFF2 = 4.5 * 4.5;
 
   for (let it = 0; it < iterations; it++) {
     const alpha = 1 - it / iterations;
@@ -173,8 +173,8 @@ export function relaxLayout(
             d2 = dx * dx + dz * dz;
           }
           const d = Math.sqrt(d2);
-          const sep = (radius[a] + radius[b]) * 2.4 + 0.3;
-          const mag = 0.04 / (d2 + 0.05) + (d < sep ? (sep - d) * 0.9 : 0);
+          const sep = (radius[a] + radius[b]) * 3 + 0.4;
+          const mag = (0.38 * (radius[a] + radius[b])) / (d2 + 0.1) + (d < sep ? (sep - d) * 0.9 : 0);
           const ux = dx / d;
           const uz = dz / d;
           if (movable[a]) {
@@ -197,8 +197,8 @@ export function relaxLayout(
       const d = Math.sqrt(dx * dx + dz * dz);
       if (d < 1e-4) continue;
       const sameLayer = layer[a] === layer[b];
-      const rest = sameLayer ? 1.4 : 0.3;
-      const k = sameLayer ? 0.02 : 0.05;
+      const rest = sameLayer ? 2.2 : 0.5;
+      const k = sameLayer ? 0.015 : 0.06;
       const mag = k * (d - rest);
       const ux = dx / d;
       const uz = dz / d;
@@ -215,8 +215,8 @@ export function relaxLayout(
     // Weak centring, then apply with a displacement cap.
     for (let i = 0; i < n; i++) {
       if (!movable[i]) continue;
-      fx[i] -= xs[i] * 0.006;
-      fz[i] -= zs[i] * 0.006;
+      fx[i] -= xs[i] * 0.004;
+      fz[i] -= zs[i] * 0.004;
       let mx = fx[i] * step;
       let mz = fz[i] * step;
       const m = Math.sqrt(mx * mx + mz * mz);

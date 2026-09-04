@@ -9,8 +9,10 @@ import { ModeBadge, Note, PanelHeader, Stat } from "../bits";
 interface Props {
   program: Program;
   plannerLabel: string;
+  plannerName: string;
   onApprove: () => void;
   onEdit: () => void;
+  onDiscover: () => void;
 }
 
 function expectationText(r: Requirement): string | null {
@@ -98,17 +100,27 @@ function StepCard({ step, requirements }: { step: WorkflowStep; requirements: Re
   );
 }
 
-export function UnderstandPanel({ program, plannerLabel, onApprove, onEdit }: Props) {
+export function UnderstandPanel({ program, plannerLabel, plannerName, onApprove, onEdit, onDiscover }: Props) {
   const parsed = program.parsed;
   const workflow = program.workflow;
   if (!parsed || !workflow) {
     return (
       <div className="space-y-4 p-5">
-        <PanelHeader eyebrow="Phase 4 · Understand" title="Nothing to review yet" description="Run discovery first so Synforma can map the objective onto the application." />
-        <Button variant="outline" onClick={onEdit}>
-          <Pencil aria-hidden="true" />
-          Edit objective
-        </Button>
+        <PanelHeader
+          eyebrow="Phase 4 · Understand"
+          title="Nothing to review yet"
+          description={program.status === "discovering" ? "Discovery has not finished for this program. Open the Discover phase to follow it or restart it." : "Run discovery first so Synforma can map the objective onto the application."}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onDiscover}>
+            Go to Discover
+            <ArrowRight aria-hidden="true" />
+          </Button>
+          <Button variant="outline" onClick={onEdit}>
+            <Pencil aria-hidden="true" />
+            Edit objective
+          </Button>
+        </div>
       </div>
     );
   }
@@ -125,7 +137,7 @@ export function UnderstandPanel({ program, plannerLabel, onApprove, onEdit }: Pr
         title={parsed.title}
         description={
           <>
-            How Synforma understood the objective, decided by the <span className="text-ink">{plannerLabel}</span>. Everything below is inference with a stated confidence; approving makes it the program of record.
+            How Synforma understood the objective, decided by the <span className="text-ink" title={plannerLabel}>{plannerName}</span>. Everything below is inference with a stated confidence; approving makes it the program of record.
           </>
         }
         aside={active ? <Badge variant="verdant">Approved</Badge> : <Badge variant="amber">Awaiting approval</Badge>}

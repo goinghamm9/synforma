@@ -448,6 +448,22 @@ export class HeuristicPlanner implements Planner {
     let body = "";
     let offerAssist = !step.judgment;
     switch (technique.id) {
+      case "clarify_consequence": {
+        const commitName = step.actions.filter((a) => a.kind === "click").slice(-1)[0]?.targetName ?? step.anchor.elementName ?? "this action";
+        anchor.elementName = commitName;
+        anchor.role = "button";
+        title = step.commit ? `What "${commitName}" does` : "What happens next";
+        body = step.commit
+          ? `"${commitName}" saves the record in ${step.anchor.heading ? "this system" : "the application"} only. Nothing is sent to the customer or outside the organization.`
+          : `Continuing only moves to the next step; nothing is saved until the final ${commitName}.`;
+        offerAssist = false;
+        break;
+      }
+      case "recommend_redesign":
+        title = "Noted for the process owners";
+        body = hiddenBehind ? `Required fields sit behind "${hiddenBehind}". Synforma will recommend surfacing them by default.` : "This step imposes avoidable effort. Synforma will recommend a change to the process owners.";
+        offerAssist = !step.judgment;
+        break;
       case "contextual_pointer":
         if (hiddenBehind) {
           anchor.elementName = hiddenBehind;

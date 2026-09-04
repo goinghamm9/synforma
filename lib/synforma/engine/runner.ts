@@ -46,6 +46,8 @@ export interface RunnerOptions {
   signal?: AbortSignal;
   /** Only run these steps (Assist mode). */
   onlySteps?: string[];
+  /** Get It Done: fill routine (non-judgment) inputs, leave judgment fields to the person, stop before commit. */
+  routineOnly?: boolean;
 }
 
 export interface RunnerResult {
@@ -73,7 +75,12 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
     hooks.onEvent("action_executed", { action: { ...action, target: undefined }, ok: r.ok, durationMs: Math.round(r.durationMs), regrounded: Boolean(r.regrounded), regroundedTo: r.regroundedTo ?? null, error: r.error ?? null }, step.id, `${action.label}${r.ok ? "" : ` — ${r.error}`}`);
     if (r.regrounded) {
       regroundings += 1;
-      hooks.onEvent("action_regrounded", { from: action.targetName, to: r.regroundedTo }, step.id, `Re-grounded "${action.targetName}" → ${r.regroundedTo}`);
+      hooks.onEvent(
+        "action_regrounded",
+        { from: action.targetName, to: r.regroundedTo, change: { type: "ui_element_changed", screen: step.route ?? null, affectedStep: step.id, detectedAt: Date.now(), risk: step.commit ? "medium" : "low" } },
+        step.id,
+        `Re-grounded "${action.targetName}" → ${r.regroundedTo}`,
+      );
     }
     return r;
   };
@@ -85,6 +92,19 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
 
     for (const raw of step.actions) {
       let action: Action = { ...raw };
+      if (opts.routineOnly && isRequirementAction(action)) {
+        const rid = requirementIdOfAction(action);
+        const req = requirements.find((r) => r.id === rid);
+        if (req?.judgment) {
+          hooks.onEvent("note", { skippedJudgment: action.targetName, requirementId: rid }, step.id, `Left "${action.targetName}" for you (needs judgment)`);
+          continue;
+        }
+      }
+      if (opts.routineOnly && step.commit && isCommitAction(action, step)) {
+        hooks.onEvent("note", { stoppedBeforeCommit: action.label }, step.id, `Stopped before "${action.targetName}" — your approval is needed to commit`);
+        hooks.onStep?.(step, "completed");
+        return { outcome: "completed", requirementsMet: [], regroundings };
+      }
       // Substitute the concrete entry URL for pattern routes.
       if (action.kind === "navigate" && action.url) {
         const pattern = generalizeRoute(action.url);
@@ -183,7 +203,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
   const requirementsMet = verifyRequirements(finalPage, requirements);
   const outcomeUrl = finalPage.url;
   const onOutcome = workflow.outcomeRoutePattern ? generalizeRoute(finalPage.url) === workflow.outcomeRoutePattern : finalPage.definitions.length >= 3;
-  hooks.onEvent("outcome_verified", { url: outcomeUrl, onOutcomeScreen: onOutcome, requirementsMet, definitions: finalPage.definitions.slice(0, 24) }, undefined, `Outcome screen ${onOutcome ? "reached" : "not recognized"}; ${requirementsMet.length}/${requirements.length} requirements verified`);
+  hooks.onEvent("outcome_verified", { url: outcomeUrl, onOutcomeScreen: onOutcome, requirementsMet, labels: finalPage.definitions.slice(0, 24).map((d) => d.label) }, undefined, `Outcome screen ${onOutcome ? "reached" : "not recognized"}; ${requirementsMet.length}/${requirements.length} requirements verified`);
   if (!onOutcome) {
     hooks.onEvent("run_failed", { reason: "outcome screen not reached", url: outcomeUrl });
     return { outcome: "failed", requirementsMet, regroundings, error: "Outcome screen not reached", outcomeUrl };

@@ -154,6 +154,30 @@ export type NodeType =
 
 export type NodeStatus = "hypothesis" | "observed" | "confirmed";
 
+/**
+ * Source authority for a piece of knowledge (highest first). Live observation of
+ * the actual instance outranks configuration, which outranks the objective text,
+ * which outranks documentation, which outranks model inference. See docs/KNOWLEDGE_LAYERS.md.
+ */
+export type TrustState =
+  | "AUTHORITATIVE_LIVE"
+  | "AUTHORITATIVE_METADATA"
+  | "ORGANIZATION_APPROVED"
+  | "VENDOR_DOCUMENTED"
+  | "OBSERVED_HIGH_CONFIDENCE"
+  | "OBSERVED_LOW_CONFIDENCE"
+  | "MODEL_INFERRED"
+  | "UNKNOWN";
+
+export interface Provenance {
+  /** How Synforma knows this: observed interface, stated objective, planner inference, configuration metadata, documentation. */
+  source: "observed_interface" | "objective" | "planner_inference" | "configuration" | "documentation" | "human_confirmation";
+  trust: TrustState;
+  observedAt: number;
+  /** Which planner produced an inference. */
+  by?: PlannerKind;
+}
+
 export interface GraphNode {
   id: string;
   type: NodeType;
@@ -163,6 +187,7 @@ export interface GraphNode {
   confidence: number;
   status: NodeStatus;
   discoveredAt: number;
+  provenance?: Provenance;
   data?: Record<string, unknown>;
 }
 
@@ -293,6 +318,8 @@ export interface Program {
   application: { name: string; baseUrl: string };
   parsed?: ParsedObjective;
   workflow?: Workflow;
+  /** Work context Synforma may use when acting (entry record URL, amounts, defaults). */
+  context?: Record<string, string>;
   graphId: string;
   status: ProgramStatus;
   planner: PlannerKind;
@@ -339,6 +366,11 @@ export type RunEventType =
   | "run_completed"
   | "run_abandoned"
   | "run_failed"
+  | "pointer_window"
+  | "keyboard_window"
+  | "friction_inferred"
+  | "intervention_withheld"
+  | "proficiency_updated"
   | "note";
 
 export interface RunEvent {
@@ -371,6 +403,14 @@ export interface Run {
   requirementsMet: string[];
   /** Number of actions that needed semantic re-grounding. */
   regroundings: number;
+  /** Assistance preference active for this run. */
+  preference?: AssistancePreference;
+  /** "Get It Done" was invoked during this run. */
+  getItDone?: boolean;
+  /** Assistance shown count (interventions displayed). */
+  assistanceShown?: number;
+  /** Interventions considered but withheld because DO_NOTHING won (false-intervention protection). */
+  withheld?: number;
 }
 
 // ───────────────────────────── Adoption engine ─────────────────────────────
@@ -388,7 +428,77 @@ export type BarrierType =
   | "motivation_uncertainty" // hesitates because the right thing is unclear (policy, data)
   | "motivation_value"; // does not see why the step matters
 
-export type StruggleType = "hesitation" | "validation_error" | "backtrack" | "abandon" | "wrong_screen";
+export type StruggleType =
+  | "hesitation"
+  | "validation_error"
+  | "backtrack"
+  | "abandon"
+  | "wrong_screen"
+  | "visual_search"
+  | "decision_uncertainty"
+  | "error_recovery";
+
+/**
+ * Friction taxonomy — observable interaction states, never emotions or traits.
+ * See docs/ENGINE.md §7. This is what the friction engine infers from
+ * semantic context plus pointer / keyboard metadata windows.
+ */
+export type FrictionState =
+  | "FLUENT"
+  | "VISUAL_SEARCH"
+  | "DECISION_UNCERTAINTY"
+  | "WORKFLOW_KNOWLEDGE_GAP"
+  | "POLICY_UNCERTAINTY"
+  | "ERROR_RECOVERY"
+  | "WORKFLOW_FRICTION"
+  | "TIME_PRESSURE"
+  | "UNKNOWN";
+
+export interface FrictionInference {
+  state: FrictionState;
+  confidence: number;
+  evidence: string[];
+  alternatives: { state: FrictionState; confidence: number }[];
+  ruleVersion: string;
+  stepId?: string;
+  t: number;
+}
+
+/** Aggregated pointer features for a short window. Raw movement never leaves the client. */
+export interface PointerWindow {
+  durationMs: number;
+  sampleCount: number;
+  distancePx: number;
+  straightLineDistancePx: number;
+  /** straight-line ÷ path distance, 0..1 (1 = direct movement). */
+  pathEfficiency: number;
+  meanVelocityPxS: number;
+  maxVelocityPxS: number;
+  directionChanges: number;
+  targetApproaches: number;
+  targetWithdrawals: number;
+  targetHoverMs: number;
+  targetSeen: boolean;
+  hoverTargets: { key: string; name: string; dwellMs: number }[];
+  clicks: number;
+  idleMs: number;
+}
+
+/** Keyboard METADATA only. Character values are discarded at capture time. */
+export interface KeyboardWindow {
+  durationMs: number;
+  keyCount: number;
+  characterCount: number;
+  backspaceCount: number;
+  enterCount: number;
+  escapeCount: number;
+  shortcutCount: number;
+  navigationCount: number;
+  medianInterKeyMs: number | null;
+  typingBursts: number;
+  /** Windows that touched a password/secret field are suppressed entirely; this counts suppressed keystrokes. */
+  suppressedCount: number;
+}
 
 export interface StruggleSignal {
   id: string;
@@ -399,6 +509,10 @@ export interface StruggleSignal {
   magnitude: number;
   t: number;
   detail?: string;
+  /** Friction state when the signal came from the friction engine. */
+  frictionState?: FrictionState;
+  frictionConfidence?: number;
+  evidence?: string[];
 }
 
 export interface Hypothesis {
@@ -406,6 +520,8 @@ export interface Hypothesis {
   programId: string;
   stepId: string;
   barrier: BarrierType;
+  /** Observable interaction state this hypothesis was derived from, when available. */
+  frictionState?: FrictionState;
   confidence: number;
   evidence: string[];
   alternatives: { barrier: BarrierType; confidence: number }[];
@@ -471,6 +587,25 @@ export interface Intervention {
   generatedBy: PlannerKind;
 }
 
+// ───────────────────────────── Proficiency & preferences ─────────────────────────────
+
+export type AssistanceLevel = "observe" | "explain" | "guide" | "do_with_me";
+
+/** How the person wants Synforma to help. A preference, never a global override of safety rules. */
+export type AssistancePreference = "just_do_it" | "work_with_me" | "teach_me" | "stay_out";
+
+export interface ProficiencyState {
+  programId: string;
+  stepId: string;
+  assistedRuns: number;
+  unassistedSuccesses: number;
+  recentErrors: number;
+  /** Rolling count of errors over the last 5 runs. */
+  errorHistory: boolean[];
+  assistanceLevel: AssistanceLevel;
+  updatedAt: number;
+}
+
 // ───────────────────────────── Trust & audit ─────────────────────────────
 
 export type AuditActor = RunActor | "admin" | "synforma";
@@ -534,6 +669,12 @@ export interface ProgramMetrics {
   steps: StepMetrics[];
   control: CohortMetrics;
   treatment: CohortMetrics;
+  /** Agent (Act) runs, reported separately from people. */
+  agent: CohortMetrics;
+  /** Human-only cohort (excludes synthetic simulation). */
+  human: CohortMetrics;
+  /** Synthetic (simulation) cohort, labeled as such. */
+  synthetic: CohortMetrics;
   /** Total semantic re-groundings across runs (self-healing events). */
   regroundings: number;
   /** Minimum sample reached for descriptive statistics. */
@@ -545,6 +686,12 @@ export interface ProgramMetrics {
 
 export interface SynformaSettings {
   plannerPreference: "auto" | PlannerKind;
+  /** Default assistance preference for new runs. */
+  assistancePreference: AssistancePreference;
+  /** Pointer / keyboard-metadata sensing on (never raw text; never on password fields). */
+  interactionSensing: boolean;
+  /** Sensing paused by the person (visible state). */
+  sensingPaused: boolean;
   /** Hesitation threshold in ms before the overlay considers the person stuck. */
   hesitationThresholdMs: number;
   /** Always require approval before commit actions in Act mode. */
@@ -555,6 +702,9 @@ export interface SynformaSettings {
 
 export const DEFAULT_SETTINGS: SynformaSettings = {
   plannerPreference: "auto",
+  assistancePreference: "work_with_me",
+  interactionSensing: true,
+  sensingPaused: false,
   hesitationThresholdMs: 12_000,
   requireApprovalForCommit: true,
   treatmentShare: 0.5,

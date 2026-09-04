@@ -107,3 +107,39 @@ Base `/sandbox/crm`; entry lead `/sandbox/crm/leads/L-1001`; `?ui=v2` switches t
 ## Engine harness for tests
 `/dev/engine` exposes `window.__synforma` = { driver, planner, snapshot(url), discover(), plan(), act(context, approve), observe(onSignal) }.
 Playwright: `chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" })`.
+
+## Added by the master-spec integration (friction, telemetry, policy, proficiency)
+
+### Friction engine — `@/lib/synforma/engine/friction`
+`inferFriction(ctx)` → `FrictionInference { state, confidence, evidence, alternatives, ruleVersion }`; states: FLUENT, VISUAL_SEARCH, DECISION_UNCERTAINTY, WORKFLOW_KNOWLEDGE_GAP, POLICY_UNCERTAINTY, ERROR_RECOVERY, WORKFLOW_FRICTION, TIME_PRESSURE, UNKNOWN.
+`FRICTION_LABEL`, `FRICTION_SHORT`. The observer runs it every ~1.5 s and emits `friction_inferred` events (data: state, confidence, evidence, alternatives, ruleVersion) plus `hooks.onFriction(inference)`.
+Struggle signals now carry `frictionState`, `frictionConfidence`, `evidence` and new types `visual_search | decision_uncertainty | error_recovery`.
+
+### Telemetry — `@/lib/synforma/interaction/telemetry`
+`PointerAggregator`, `KeyboardAggregator` (used internally by the observer), `isSensitiveField`, `classifyKey`, `GazeProvider` (interface only; nothing implemented, nothing collected).
+Events `pointer_window` / `keyboard_window` contain aggregates only (no coordinates, no key values). Show them in a "what Synforma sees" inspector.
+
+### Observer options
+`new HumanObserver({ ..., sensing: settings.interactionSensing && !settings.sensingPaused, policyConstraints: program.parsed.policyConstraints, hooks: { ..., onFriction } })`; `observer.setSensing(on)`; `observer.latestFriction`.
+
+### Decision policy — `@/lib/synforma/engine/adoption`
+`decide(signal, deps)` → `Decision { selected, candidates[{techniqueId,total}], hypothesis, intervention | null, reason }` — `selected === "do_nothing"` means stay quiet (record an `intervention_withheld` event with the candidates so the UI can show "why nothing appeared"). `reactToSignal` still returns just the intervention.
+`deps` now accepts `preference` (AssistancePreference), `getItDone`, `proficiency` (ProficiencyState for the step), `shownThisRun`, `sinceLastShownMs`.
+`FRICTION_TO_BARRIER`, `scoreDoNothing`, `rankTechniques(ctx)` (includes the DO_NOTHING candidate). New techniques: `do_nothing`, `clarify_consequence`, `recommend_redesign` (`DO_NOTHING_ID` in science/techniques).
+
+### Proficiency & fading — `@/lib/synforma/engine/proficiency`
+Store: `useSynforma((s) => s.proficiency[`${programId}/${stepId}`])`, `setProficiency(p)`.
+`initialProficiency(programId, stepId)`, `stepOutcomesForRun(run, events, workflow)`, `updateProficiency(prev, outcome) → { next, faded }` (call for each step when a human run finishes; emit `proficiency_updated`), `interruptionMultiplier(p)`, `LEVEL_LABEL`, `LEVEL_ORDER`.
+
+### Get It Done — runner option
+`runWorkflow({ ..., routineOnly: true })` fills routine inputs, leaves judgment fields to the person (emits `note` with `skippedJudgment`), and stops before the commit (emits `note` with `stoppedBeforeCommit`). Combine with `onlySteps` for a single step.
+
+### Preferences — settings & runs
+`settings.assistancePreference` ("just_do_it" | "work_with_me" | "teach_me" | "stay_out"), `settings.interactionSensing`, `settings.sensingPaused`; `run.preference`, `run.getItDone`, `run.assistanceShown`, `run.withheld`.
+
+### Admin recommendation — `@/lib/synforma/engine/recommend`
+`recommend(program, metrics, runs, events, hypotheses, interventions)` → `Recommendation { class, headline, rationale, evidence, unlikelyToHelp, confidence, stepId, stepTitle, frictionDistribution }`; `RECOMMENDATION_LABEL`; `MIN_RUNS_FOR_RECOMMENDATION` = 3.
+
+### Provenance
+Every GraphNode carries `provenance { source, trust, observedAt }` (`TrustState`). Show it in node details as "How Synforma knows this".
+`action_regrounded` events now include `data.change` (a UI change event: type, screen, affectedStep, risk) — surface as "Change detected" entries.

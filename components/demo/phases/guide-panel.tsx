@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { ExternalLink, Eye, Loader2, Play, Square, Users } from "lucide-react";
-import { Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
+import { Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { PERSONAS } from "@/lib/synforma/engine/synthetic";
 import type { Program, Run, RunEvent } from "@/lib/synforma/types";
 import { ActorBadge, EmptyState, ErrorNote, Note, OutcomeBadge, PanelHeader } from "../bits";
@@ -127,7 +127,6 @@ export function GuidePanel({ state, program, runs, events, onRunSynthetic, onSto
                 <TableHead>Requirements</TableHead>
                 <TableHead>Struggle</TableHead>
                 <TableHead>Assistance</TableHead>
-                <TableHead className="text-right">Label</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -146,7 +145,6 @@ export function GuidePanel({ state, program, runs, events, onRunSynthetic, onSto
                     </TableCell>
                     <TableCell className="mono-data">{struggleCount.get(r.id) ?? 0}</TableCell>
                     <TableCell className="mono-data">{r.actor === "human" ? (assistanceCount.get(r.id) ?? 0) : <span className="text-mist">—</span>}</TableCell>
-                    <TableCell className="text-right">{r.actor === "synthetic" ? <Badge variant="amber">labeled simulation</Badge> : <Badge variant="outline">observed</Badge>}</TableCell>
                   </TableRow>
                 ))}
             </TableBody>

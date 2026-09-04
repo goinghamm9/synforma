@@ -36,7 +36,7 @@ const BEHAVIORS: { who: string; what: string }[] = [
 const PROTOTYPES: { index: string; name: string; status: string; variant: "verdant" | "amber"; body: string }[] = [
   {
     index: "P1",
-    name: "Zero-configuration universal application",
+    name: "Zero authored guidance for an unfamiliar application",
     status: "Runs in this build",
     variant: "verdant",
     body: "Synforma is given an application it has never seen and an objective in plain language. It explores without committing, learns the interface semantically, identifies the workflow, performs it, guides a person, observes another, detects struggle, generates assistance, and measures completion. This is the demo.",
@@ -320,7 +320,7 @@ export default function ThesisPage() {
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
               <Button asChild size="lg">
                 <Link href="/demo">
-                  Run the zero-configuration demo
+                  Run the zero-authoring demo
                   <ArrowRight aria-hidden="true" />
                 </Link>
               </Button>

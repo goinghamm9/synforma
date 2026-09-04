@@ -32,6 +32,7 @@ interface Props {
   program: Program | null;
   liveGraph: WorkGraph | null;
   plannerLabel: string;
+  plannerName: string;
   /** True while the engine is driving the iframe (crawl, run, simulation). */
   engineBusy: boolean;
   onStop: () => void;
@@ -39,7 +40,7 @@ interface Props {
   onContinue: () => void;
 }
 
-export function DiscoverPanel({ state, program, liveGraph, plannerLabel, engineBusy, onStop, onRestart, onContinue }: Props) {
+export function DiscoverPanel({ state, program, liveGraph, plannerLabel, plannerName, engineBusy, onStop, onRestart, onContinue }: Props) {
   const running = state.status === "running";
   // The WebGL render loop competes with the same-origin iframe for the main thread and can starve the
   // target application while the crawler waits for it to settle, so the 3D view is opt-in while busy.
@@ -100,7 +101,7 @@ export function DiscoverPanel({ state, program, liveGraph, plannerLabel, engineB
       {planning ? (
         <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-graphite">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          Parsing the objective and mapping requirements to fields with the {plannerLabel.toLowerCase()}…
+          Parsing the objective and mapping requirements to fields with the {plannerName}…
         </div>
       ) : null}
 
@@ -170,17 +171,18 @@ export function DiscoverPanel({ state, program, liveGraph, plannerLabel, engineB
               <span className="mono-data text-ink">{state.planned.steps}</span> steps.
             </div>
           ) : null}
-          {program?.status === "understood" || program?.status === "active" ? (
-            <Button onClick={onContinue} data-testid="continue-understand">
-              Review what Synforma understood
-              <ArrowRight aria-hidden="true" />
-            </Button>
-          ) : (
-            <Button variant="outline" onClick={onRestart}>
+          <div className="flex flex-wrap items-center gap-2">
+            {program?.status === "understood" || program?.status === "active" ? (
+              <Button onClick={onContinue} data-testid="continue-understand">
+                Review what Synforma understood
+                <ArrowRight aria-hidden="true" />
+              </Button>
+            ) : null}
+            <Button variant={program?.status === "understood" || program?.status === "active" ? "outline" : "default"} onClick={onRestart} disabled={engineBusy} data-testid="rerun-discovery">
               <Play aria-hidden="true" />
               Run discovery again
             </Button>
-          )}
+          </div>
         </section>
       ) : null}
     </div>

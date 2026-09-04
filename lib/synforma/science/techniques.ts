@@ -28,24 +28,52 @@ export const EVIDENCE_WEIGHT: Record<EvidenceClass, number> = {
 };
 
 export const BARRIER_LABEL: Record<BarrierType, string> = {
-  capability_knowledge: "Knowledge: does not know the step exists or what it means",
-  capability_skill: "Skill: knows what to do, the interaction itself is hard",
+  capability_knowledge: "Knowledge gap: the next process step is not evident from the interface",
+  capability_skill: "Interaction difficulty: the input format or sequence causes errors",
   opportunity_visibility: "Visibility: the control is hidden, collapsed or elsewhere",
   opportunity_friction: "Friction: the interface makes the step slow or error-prone",
-  motivation_uncertainty: "Uncertainty: hesitates because the right thing is unclear",
-  motivation_value: "Value: does not see why the step matters",
+  motivation_uncertainty: "Decision uncertainty: the action was found but not committed",
+  motivation_value: "Purpose unclear: the step's relevance is not evident in context",
 };
 
 export const BARRIER_SHORT: Record<BarrierType, string> = {
-  capability_knowledge: "Knowledge",
-  capability_skill: "Skill",
+  capability_knowledge: "Knowledge gap",
+  capability_skill: "Interaction difficulty",
   opportunity_visibility: "Visibility",
   opportunity_friction: "Friction",
-  motivation_uncertainty: "Uncertainty",
-  motivation_value: "Value",
+  motivation_uncertainty: "Decision uncertainty",
+  motivation_value: "Purpose unclear",
 };
 
+export const DO_NOTHING_ID = "do_nothing";
+
 export const TECHNIQUES: InterventionTechnique[] = [
+  {
+    id: DO_NOTHING_ID,
+    name: "Do nothing",
+    mechanism: "Interruption is a cost. When the person is fluent, the evidence is weak, or help would not change the outcome, the best intervention is none.",
+    barriers: [],
+    description: "A first-class policy action. Synforma stays quiet and keeps observing; the decision and its reasons are still recorded.",
+    example: "Fluent progress on a step the person completed unassisted before: nothing appears.",
+    mode: "guide",
+    evidence: "theoretical",
+    sourceIds: ["sweller1988", "amershi2019"],
+    cautions: ["Must remain a common outcome; a system that always intervenes is measured by its false-intervention rate."],
+    burden: 0,
+  },
+  {
+    id: "clarify_consequence",
+    name: "Clarify consequence",
+    mechanism: "Resolves hesitation before a found action by stating what the action does and does not do, in one line.",
+    barriers: ["motivation_uncertainty"],
+    description: "One sentence about the effect and reversibility of the action the person has already located. Never a highlight: the control was found.",
+    example: "\"Creating this opportunity only saves it internally. Nothing is sent to the customer.\"",
+    mode: "guide",
+    evidence: "theoretical",
+    sourceIds: ["amershi2019", "parasuraman2000"],
+    cautions: ["State only consequences that are known from the program or the interface; never invent policy."],
+    burden: 0.08,
+  },
   {
     id: "contextual_pointer",
     name: "Contextual pointer",
@@ -149,6 +177,19 @@ export const TECHNIQUES: InterventionTechnique[] = [
     sourceIds: ["parasuraman2000"],
     cautions: ["Never for steps that require human judgment.", "Commit actions are always approval-gated."],
     burden: 0.05,
+  },
+  {
+    id: "recommend_redesign",
+    name: "Recommend redesign",
+    mechanism: "When the process, not the person, is the problem, the right intervention targets the system: surface the friction to the owners instead of training harder.",
+    barriers: ["opportunity_friction", "opportunity_visibility"],
+    description: "Records a system-level recommendation (interface, policy or process change) for administrators; nothing is shown to the person beyond minimal assistance.",
+    example: "\"Required fields are hidden behind a collapsible on every run. Recommend surfacing them by default.\"",
+    mode: "guide",
+    evidence: "philosophical",
+    sourceIds: ["nielsen1994"],
+    cautions: ["Aggregate evidence only; never single out a person."],
+    burden: 0.02,
   },
   {
     id: "graded_first_run",

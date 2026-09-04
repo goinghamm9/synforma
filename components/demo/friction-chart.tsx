@@ -39,7 +39,7 @@ function FrictionTooltip({ active, payload }: { active?: boolean; payload?: { pa
 
 export function FrictionChart({ steps }: { steps: StepMetrics[] }) {
   const rows: Row[] = steps.map((s, i) => ({
-    name: `${i + 1}. ${s.title.length > 22 ? s.title.slice(0, 21) + "…" : s.title}`,
+    name: `${i + 1}. ${s.title.length > 20 ? s.title.slice(0, 19).trimEnd() + "…" : s.title}`,
     title: s.title,
     friction: s.friction ?? 0,
     hasData: s.friction !== null,
@@ -56,7 +56,7 @@ export function FrictionChart({ steps }: { steps: StepMetrics[] }) {
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 40, bottom: 4, left: 4 }} barCategoryGap={8}>
             <XAxis type="number" domain={[0, 1]} ticks={[0, 0.25, 0.5, 0.75, 1]} tickFormatter={(v: number) => `${Math.round(v * 100)}%`} tick={{ fontSize: 11, fill: "#6b6b70" }} axisLine={{ stroke: "#e4e2dd" }} tickLine={false} />
-            <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 11, fill: "#3a3a3c" }} axisLine={false} tickLine={false} interval={0} />
+            <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: "#3a3a3c" }} axisLine={false} tickLine={false} interval={0} />
             <Tooltip content={<FrictionTooltip />} cursor={{ fill: "#f3f2ee" }} />
             <Bar dataKey={(r: Row) => (r.hasData ? r.friction : 1)} isAnimationActive={false} radius={[0, 4, 4, 0]} maxBarSize={18}>
               {rows.map((r) => (

@@ -1,4 +1,12 @@
-import type { EdgeType, GraphEdge, GraphNode, NodeStatus, NodeType, WorkGraph } from "../types";
+import type { EdgeType, GraphEdge, GraphNode, NodeStatus, NodeType, Provenance, WorkGraph } from "../types";
+
+/** Default provenance by node status: observed interface facts vs planner hypotheses. */
+export function defaultProvenance(status: NodeStatus, source?: Provenance["source"]): Provenance {
+  if (source === "objective") return { source, trust: "ORGANIZATION_APPROVED", observedAt: Date.now() };
+  if (status === "hypothesis") return { source: source ?? "planner_inference", trust: "MODEL_INFERRED", observedAt: Date.now() };
+  if (status === "confirmed") return { source: source ?? "observed_interface", trust: "AUTHORITATIVE_LIVE", observedAt: Date.now() };
+  return { source: source ?? "observed_interface", trust: "OBSERVED_HIGH_CONFIDENCE", observedAt: Date.now() };
+}
 import { slug } from "../interaction/text";
 
 /**
@@ -17,7 +25,7 @@ export function nodeId(type: NodeType, ...parts: string[]): string {
 
 export function upsertNode(
   graph: WorkGraph,
-  node: Omit<GraphNode, "discoveredAt" | "confidence" | "status"> & { confidence?: number; status?: NodeStatus; discoveredAt?: number },
+  node: Omit<GraphNode, "discoveredAt" | "confidence" | "status"> & { confidence?: number; status?: NodeStatus; discoveredAt?: number; provenance?: Provenance },
 ): GraphNode {
   const existing = graph.nodes.find((n) => n.id === node.id);
   if (existing) {
@@ -26,9 +34,12 @@ export function upsertNode(
     if (node.data) existing.data = { ...(existing.data ?? {}), ...node.data };
     if (node.confidence !== undefined) existing.confidence = Math.max(existing.confidence, node.confidence);
     if (node.status) existing.status = rankStatus(existing.status, node.status);
+    if (node.provenance) existing.provenance = node.provenance;
+    else if (!existing.provenance) existing.provenance = defaultProvenance(existing.status);
     graph.updatedAt = Date.now();
     return existing;
   }
+  const status = node.status ?? "observed";
   const created: GraphNode = {
     id: node.id,
     type: node.type,
@@ -36,8 +47,9 @@ export function upsertNode(
     description: node.description,
     data: node.data,
     confidence: node.confidence ?? 0.6,
-    status: node.status ?? "observed",
+    status,
     discoveredAt: node.discoveredAt ?? Date.now(),
+    provenance: node.provenance ?? defaultProvenance(status, node.type === "requirement" || node.type === "objective" || node.type === "policy" ? "objective" : undefined),
   };
   graph.nodes.push(created);
   graph.version += 1;

@@ -26,7 +26,11 @@ function cohort(runs: Run[]): CohortMetrics {
   };
 }
 
-/** A run counts toward the Intent-to-Outcome Rate only if it completed AND every requirement was verified. */
+/**
+ * A run counts toward the Intent-to-Outcome Rate only if it completed AND every requirement was verified.
+ * The rate is computed over runs by people (human + synthetic, the latter labeled as simulation);
+ * agent runs are reported separately so automation never inflates the human number.
+ */
 export function isIntentToOutcomeSuccess(run: Run, requirementCount: number): boolean {
   return run.outcome === "completed" && requirementCount > 0 && run.requirementsMet.length >= requirementCount;
 }
@@ -37,9 +41,10 @@ export function computeProgramMetrics(program: Program, runs: Run[], events: Run
   const byActor: Record<RunActor, number> = { agent: 0, human: 0, synthetic: 0 };
   for (const r of mine) byActor[r.actor] += 1;
   const requirementCount = program.parsed?.requirements.filter((r) => r.kind === "field").length ?? 0;
-  const successes = finished.filter((r) => isIntentToOutcomeSuccess(r, requirementCount));
   const completed = finished.filter((r) => r.outcome === "completed");
   const humanOrSynthetic = mine.filter((r) => r.actor !== "agent");
+  const peopleFinished = humanOrSynthetic.filter((r) => r.outcome);
+  const successes = peopleFinished.filter((r) => isIntentToOutcomeSuccess(r, requirementCount));
   const steps: StepMetrics[] = (program.workflow?.steps ?? []).map((step) => {
     const stepEvents = events.filter((e) => e.stepId === step.id && humanOrSynthetic.some((r) => r.id === e.runId));
     const entered = new Set(stepEvents.filter((e) => e.type === "step_entered").map((e) => e.runId)).size;
@@ -67,13 +72,16 @@ export function computeProgramMetrics(program: Program, runs: Run[], events: Run
     runs: mine.length,
     byActor,
     completed: completed.length,
-    intentToOutcomeRate: finished.length >= MINIMUM_RUNS ? successes.length / finished.length : null,
+    intentToOutcomeRate: peopleFinished.length >= MINIMUM_RUNS ? successes.length / peopleFinished.length : null,
     medianDurationMs: median(completed.filter((r) => r.endedAt && r.actor === "human").map((r) => r.endedAt! - r.startedAt)),
     steps,
     control: cohort(human.filter((r) => r.cohort === "control" || r.interventionIds.length === 0)),
     treatment: cohort(human.filter((r) => r.interventionIds.length > 0)),
+    agent: cohort(mine.filter((r) => r.actor === "agent")),
+    human: cohort(human),
+    synthetic: cohort(mine.filter((r) => r.actor === "synthetic")),
     regroundings,
-    sufficient: finished.length >= MINIMUM_RUNS,
+    sufficient: peopleFinished.length >= MINIMUM_RUNS,
     minimumRuns: MINIMUM_RUNS,
   };
 }

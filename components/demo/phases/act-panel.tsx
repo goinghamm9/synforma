@@ -27,7 +27,8 @@ interface Props {
   program: Program;
   uiVariant: UiVariant;
   uiBusy: boolean;
-  plannerLabel: string;
+  /** Short planner name for prose ("heuristic planner" / "Gemini planner"). */
+  plannerName: string;
   requireApproval: boolean;
   agentRuns: Run[];
   onRun: () => void;
@@ -36,7 +37,7 @@ interface Props {
   onOpenOutcome: (url: string) => void;
 }
 
-export function ActPanel({ state, program, uiVariant, uiBusy, plannerLabel, requireApproval, agentRuns, onRun, onStop, onToggleUi, onOpenOutcome }: Props) {
+export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requireApproval, agentRuns, onRun, onStop, onToggleUi, onOpenOutcome }: Props) {
   const workflow = program.workflow;
   const parsed = program.parsed;
   const running = state.status === "running";
@@ -53,7 +54,7 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerLabel, requ
         title="Let Synforma perform the workflow"
         description={
           <>
-            The agent executes the workflow inferred by the {plannerLabel.toLowerCase()} through the interaction layer. Commits are approval-gated; every action is audited. If the vendor changes the interface, controls are
+            The agent executes the workflow inferred by the {plannerName} through the interaction layer. Commits are approval-gated; every action is audited. If the vendor changes the interface, controls are
             re-resolved by meaning rather than by selector.
           </>
         }

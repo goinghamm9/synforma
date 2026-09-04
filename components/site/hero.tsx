@@ -25,7 +25,7 @@ export function Hero() {
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">
             <Button asChild size="lg">
               <Link href="/demo">
-                Run the zero-configuration demo
+                Run the zero-authoring demo
                 <ArrowRight aria-hidden="true" />
               </Link>
             </Button>

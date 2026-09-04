@@ -84,6 +84,13 @@ export class IframeDriver {
       this.iframe.src = url;
     });
     await this.waitForSettle(1500);
+    // Readiness: client-rendered applications may hydrate after load. Wait until the page exposes
+    // interactive elements (or a heading) before reporting it, up to ~4s.
+    for (let i = 0; i < 16; i++) {
+      const snap = this.snapshot();
+      if (snap.page.elements.length > 0 || snap.page.headings.length > 0) break;
+      await sleep(250);
+    }
     this.events.onNavigate?.(this.currentUrl());
     return this.snapshot().page;
   }

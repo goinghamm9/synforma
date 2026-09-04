@@ -1,6 +1,6 @@
 # Roadmap
 
-## Prototype 1 — zero-configuration universal application (this build)
+## Prototype 1 — zero authored guidance for an unfamiliar application (this build)
 Done: discovery, understanding, Act with approvals, Guide with live anchors, observation, adaptation,
 measurement, synthetic users, semantic self-healing across a vendor UI update, 3D Work Graph, thesis site.
 
@@ -34,3 +34,19 @@ signals (assist requests, help-center searches), and privacy controls per person
   fully audited and interruptible).
 - Evaluation harness: a suite of sandbox applications with known workflows and injected UI changes to
   measure discovery recall, grounding precision and self-healing rates on every commit.
+
+## From the master specification (Appendices I and J)
+
+- **Five knowledge layers**: product knowledge (vendor docs and release notes as structured change events),
+  live application understanding (done for the browser), native connectors normalized into a capability
+  graph, organizational context (SOP ingestion beyond the objective text), personal context (done in seed
+  form: proficiency, preferences).
+- **Enterprise Configuration Twin**: vendor truth, tenant truth (metadata APIs), operational truth (runs);
+  versioned configuration graph; drift detection with staged promotion; shadow-process detection
+  ("73% of executions leave the system"); source-authority hierarchy with trust states (seeded now).
+- **Cross-computer presence**: browser extension (Chrome/Edge), desktop companion (Windows UI Automation,
+  macOS Accessibility), cloud runtime, local processing of raw interaction data.
+- **Transition Mode**: old route vs new route memory, bridging from old actions to the new workflow,
+  Capability Value scoring per step (judgment, transferability, frequency, deskilling consequence).
+- **Research track**: high-fidelity lab mode (eye tracking, mouse, keyboard metadata) to find less-invasive
+  proxies; gaze stays optional and off by default; kill criteria as specified.

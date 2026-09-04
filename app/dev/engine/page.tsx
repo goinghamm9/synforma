@@ -11,6 +11,8 @@ import { createGraph } from "@/lib/synforma/graph/work-graph";
 import { HeuristicPlanner } from "@/lib/synforma/planner/heuristic";
 import { runWorkflow } from "@/lib/synforma/engine/runner";
 import { HumanObserver } from "@/lib/synforma/engine/observer";
+import { decide } from "@/lib/synforma/engine/adoption";
+import type { Hypothesis, Intervention, StruggleSignal } from "@/lib/synforma/types";
 import { DEFAULT_CONTEXT, DEFAULT_OBJECTIVE, SANDBOX_APP } from "@/lib/synforma/demo";
 import type { RunEvent, Workflow } from "@/lib/synforma/types";
 
@@ -70,24 +72,48 @@ export default function EngineHarness() {
         });
         return { result, events: api.events };
       },
-      observe(onSignal: (s: unknown) => void) {
+      frictions: [] as unknown[],
+      observe(onSignal: (s: unknown) => void, sensing = true) {
         const workflow = (api as Record<string, unknown>).workflow as Workflow;
-        const parsed = (api as Record<string, unknown>).parsed as { requirements: never[] };
+        const parsed = (api as Record<string, unknown>).parsed as { requirements: never[]; policyConstraints: string[] };
         api.events = [];
+        api.frictions = [];
         const observer = new HumanObserver({
           driver,
           workflow,
           requirements: parsed.requirements,
           hesitationThresholdMs: 3000,
+          sensing,
+          policyConstraints: parsed.policyConstraints,
           hooks: {
             onEvent: (type, data, stepId, message) => api.events.push({ type, data, stepId, message }),
             onStepChange: () => {},
             onSignal: (s) => onSignal(s),
             onComplete: (r) => api.events.push({ type: "run_completed", data: r as unknown as Record<string, unknown> }),
+            onFriction: (f) => api.frictions.push(f),
           },
         });
         observer.start();
         return observer;
+      },
+      async decide(signal: StruggleSignal, opts: { preference?: "just_do_it" | "work_with_me" | "teach_me" | "stay_out"; getItDone?: boolean; unassisted?: number } = {}) {
+        const workflow = (api as Record<string, unknown>).workflow as Workflow;
+        const parsed = (api as Record<string, unknown>).parsed as Record<string, unknown>;
+        const hyps: Hypothesis[] = [];
+        const ints: Intervention[] = [];
+        const program = { id: "p_test", title: "t", objectiveText: "", application: { name: SANDBOX_APP.name, baseUrl: SANDBOX_APP.baseUrl }, parsed, workflow, graphId: "g", status: "active", planner: "heuristic", createdAt: 0, updatedAt: 0 } as unknown as Parameters<typeof decide>[1]["program"];
+        return decide(signal, {
+          planner,
+          program,
+          getSignalsForStep: () => [signal],
+          getInterventionsForStep: () => ints,
+          getRuns: () => [],
+          saveHypothesis: (h) => hyps.push(h),
+          saveIntervention: (i) => ints.push(i),
+          preference: opts.preference,
+          getItDone: opts.getItDone,
+          proficiency: opts.unassisted !== undefined ? { programId: "p_test", stepId: signal.stepId, assistedRuns: 0, unassistedSuccesses: opts.unassisted, recentErrors: 0, errorHistory: [], assistanceLevel: opts.unassisted >= 3 ? "explain" : "guide", updatedAt: 0 } : undefined,
+        });
       },
     };
     window.__synforma = api;
