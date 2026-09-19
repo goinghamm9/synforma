@@ -6,20 +6,29 @@ import { DO_NOTHING_ID, TECHNIQUE_BY_ID } from "@/lib/synforma/science/technique
 import { cn } from "@/lib/utils";
 import type { QuietDecision } from "./use-guide-run";
 
+/** Labels for signals that did not come from the friction engine. */
+const SIGNAL_LABEL: Partial<Record<QuietDecision["signalType"], string>> = {
+  hesitation: "a pause",
+  validation_error: "a validation error",
+  backtrack: "a step back",
+  wrong_screen: "a detour",
+  abandon: "an interruption",
+};
+
 /**
  * A decision in which DO_NOTHING won. Shown discreetly so the person can see
  * that Synforma noticed something and chose not to interrupt, and why.
  */
 export function QuietLine({ quiet }: { quiet: QuietDecision }) {
   const [open, setOpen] = useState(false);
-  const label = quiet.frictionState ? FRICTION_SHORT[quiet.frictionState] : "a pause";
-  const confidence = quiet.confidence !== null ? ` (${Math.round(quiet.confidence * 100)}%)` : "";
+  const label = quiet.frictionState ? FRICTION_SHORT[quiet.frictionState] : SIGNAL_LABEL[quiet.signalType] ?? quiet.signalType.replace(/_/g, " ");
+  const confidence = quiet.confidence !== null ? ` (${Math.round(quiet.confidence * 100)}%)` : quiet.detail ? ` (${quiet.detail})` : "";
   return (
     <div className="rounded-md border border-line bg-surface px-3 py-2 text-[12px] text-slate" data-testid="quiet-line" data-state={quiet.frictionState ?? "none"} role="status">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span>
           Synforma stayed quiet — {label}
-          {confidence}.
+          {confidence}.{" "}
         </span>
         <button
           type="button"

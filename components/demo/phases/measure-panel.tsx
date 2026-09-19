@@ -29,8 +29,12 @@ interface Props {
 const EMPTY_HYPOTHESES: Record<string, Hypothesis> = {};
 const EMPTY_INTERVENTIONS: Intervention[] = [];
 
-function cohortLine(c: CohortMetrics): string {
-  return `${c.runs} run${c.runs === 1 ? "" : "s"} · ${c.rate === null ? "—" : `${formatPercent(c.rate)} completion`}`;
+function cohortRuns(c: CohortMetrics): string {
+  return `${c.runs} run${c.runs === 1 ? "" : "s"}`;
+}
+
+function cohortHint(c: CohortMetrics, label: string): string {
+  return `${c.rate === null ? "no finished runs" : `${formatPercent(c.rate)} completion`} · ${label}`;
 }
 
 function DiagnosisCard({ rec, peopleRuns, simulatedFrictionShare }: { rec: Recommendation; peopleRuns: number; simulatedFrictionShare: number }) {
@@ -191,9 +195,9 @@ export function MeasurePanel({ program, runs, events, audit, hypotheses = EMPTY_
           </div>
         )}
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid="cohort-tiles">
-          <Stat label="People" value={cohortLine(metrics.human)} hint="human runs from the employee view" testId="cohort-people" />
-          <Stat label="Simulation" value={cohortLine(metrics.synthetic)} hint="synthetic users, labeled simulation" tone="amber" testId="cohort-simulation" />
-          <Stat label="Agent" value={cohortLine(metrics.agent)} hint="Act runs, reported separately" testId="cohort-agent" />
+          <Stat label="People" value={cohortRuns(metrics.human)} hint={cohortHint(metrics.human, "human runs from the employee view")} testId="cohort-people" />
+          <Stat label="Simulation" value={cohortRuns(metrics.synthetic)} hint={cohortHint(metrics.synthetic, "synthetic users, labeled simulation")} tone="amber" testId="cohort-simulation" />
+          <Stat label="Agent" value={cohortRuns(metrics.agent)} hint={cohortHint(metrics.agent, "Act runs, reported separately")} testId="cohort-agent" />
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Stat label="Runs" value={metrics.runs} hint={`${metrics.byActor.agent} agent · ${metrics.byActor.human} human · ${metrics.byActor.synthetic} synthetic`} />

@@ -2,6 +2,10 @@ import { Badge } from "@/components/ui";
 import { TRUST_LABEL, TRUST_MEANING, TRUST_ORDER, TRUST_TONE } from "@/components/graph/provenance";
 import { Prose } from "./shell";
 
+/** Below `sm` the table stacks into one card per trust state, each cell captioned by its column name. */
+const STACKED_CELL =
+  "max-sm:mt-3 max-sm:block max-sm:p-0 max-sm:before:mb-1 max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-medium max-sm:before:uppercase max-sm:before:tracking-wider max-sm:before:text-slate";
+
 export function KnowledgeSources() {
   return (
     <div>
@@ -18,25 +22,28 @@ export function KnowledgeSources() {
         </p>
       </Prose>
 
-      <div className="mt-8 overflow-x-auto">
-        <table className="w-full text-sm" data-testid="trust-table">
-          <caption className="eyebrow mb-3 text-left">Trust states, highest authority first</caption>
-          <thead>
+      <div className="mt-8">
+        <table className="w-full text-sm max-sm:block" data-testid="trust-table">
+          <caption className="eyebrow mb-3 text-left max-sm:block">Trust states, highest authority first</caption>
+          <thead className="max-sm:hidden">
             <tr className="border-b border-line text-left">
               <th className="py-2 pr-4 text-[11px] font-medium uppercase tracking-wider text-slate">Trust state</th>
               <th className="py-2 pr-4 text-[11px] font-medium uppercase tracking-wider text-slate">Meaning</th>
               <th className="py-2 text-[11px] font-medium uppercase tracking-wider text-slate">In this build</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="max-sm:block max-sm:space-y-3">
             {TRUST_ORDER.map((t) => (
-              <tr key={t} className="border-b border-line align-top last:border-0">
-                <td className="py-3 pr-4">
+              <tr
+                key={t}
+                className="align-top sm:border-b sm:border-line sm:last:border-0 max-sm:block max-sm:rounded-lg max-sm:border max-sm:border-line max-sm:bg-surface max-sm:p-4"
+              >
+                <td className="py-3 pr-4 max-sm:block max-sm:p-0">
                   <Badge variant={TRUST_TONE[t]}>{TRUST_LABEL[t]}</Badge>
                   <code className="mono-data mt-1.5 block text-[11px] text-mist">{t}</code>
                 </td>
-                <td className="py-3 pr-4 leading-relaxed text-graphite">{TRUST_MEANING[t].meaning}</td>
-                <td className="py-3 leading-relaxed text-graphite">{TRUST_MEANING[t].inThisBuild}</td>
+                <td className={`py-3 pr-4 leading-relaxed text-graphite ${STACKED_CELL} max-sm:before:content-['Meaning']`}>{TRUST_MEANING[t].meaning}</td>
+                <td className={`py-3 leading-relaxed text-graphite ${STACKED_CELL} max-sm:before:content-['In_this_build']`}>{TRUST_MEANING[t].inThisBuild}</td>
               </tr>
             ))}
           </tbody>

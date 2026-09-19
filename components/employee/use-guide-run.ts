@@ -80,6 +80,9 @@ export interface QuietDecision {
   stepId: string;
   frictionState: FrictionState | null;
   confidence: number | null;
+  /** The struggle signal that triggered the decision (a time-only hesitation carries no friction state). */
+  signalType: StruggleSignal["type"];
+  detail?: string;
   candidates: { techniqueId: string; total: number }[];
   reason: string;
   t: number;
@@ -452,7 +455,7 @@ export function useGuideRun(program: Program, iframeRef: React.RefObject<HTMLIFr
             `Stayed quiet: ${signal.frictionState ?? signal.type}`,
           );
           if (run) useSynforma.getState().updateRun(run.id, { withheld: (run.withheld ?? 0) + 1 });
-          setQuiet({ stepId: signal.stepId, frictionState: signal.frictionState ?? null, confidence: signal.frictionConfidence ?? null, candidates: decision.candidates.slice(0, 3), reason: decision.reason, t: signal.t });
+          setQuiet({ stepId: signal.stepId, frictionState: signal.frictionState ?? null, confidence: signal.frictionConfidence ?? null, signalType: signal.type, detail: signal.detail, candidates: decision.candidates.slice(0, 3), reason: decision.reason, t: signal.t });
           return;
         }
         const result = decision.intervention;

@@ -50,6 +50,9 @@ const COLLECTION: { category: string; collected: string; never: string }[] = [
 
 const NEVER_INFERRED = "emotion, stress, personality, intelligence, motivation as a trait, mental health, neurodivergence, performer rankings, or any employee-worth score";
 
+/** Below `sm` the table stacks into one card per category, each cell captioned by its column name. */
+const STACKED_CELL = "max-sm:mt-2.5 max-sm:block max-sm:p-0 max-sm:before:mb-0.5 max-sm:before:block max-sm:before:text-[11px] max-sm:before:font-medium max-sm:before:uppercase max-sm:before:tracking-wider";
+
 export function SensingSection() {
   const sensing = useSynforma((s) => s.settings.interactionSensing);
   const paused = useSynforma((s) => s.settings.sensingPaused);
@@ -88,26 +91,27 @@ export function SensingSection() {
             Learn exactly what is collected
           </summary>
           <div className="border-t border-line px-4 pb-4">
-            <div className="overflow-x-auto">
-              <table className="mt-3 w-full text-[13px]" data-testid="collected-table">
-                <thead>
-                  <tr className="border-b border-line text-left">
-                    <th className="py-2 pr-3 text-[11px] font-medium uppercase tracking-wider text-slate">Category</th>
-                    <th className="py-2 pr-3 text-[11px] font-medium uppercase tracking-wider text-verdant">Collected</th>
-                    <th className="py-2 text-[11px] font-medium uppercase tracking-wider text-signal">Never collected</th>
+            <table className="mt-3 w-full text-[13px] max-sm:block" data-testid="collected-table">
+              <thead className="max-sm:hidden">
+                <tr className="border-b border-line text-left">
+                  <th className="py-2 pr-3 text-[11px] font-medium uppercase tracking-wider text-slate">Category</th>
+                  <th className="py-2 pr-3 text-[11px] font-medium uppercase tracking-wider text-verdant">Collected</th>
+                  <th className="py-2 text-[11px] font-medium uppercase tracking-wider text-signal">Never collected</th>
+                </tr>
+              </thead>
+              <tbody className="max-sm:block max-sm:space-y-2.5">
+                {COLLECTION.map((row) => (
+                  <tr
+                    key={row.category}
+                    className="align-top sm:border-b sm:border-line sm:last:border-0 max-sm:block max-sm:rounded-lg max-sm:border max-sm:border-line max-sm:bg-surface-2/60 max-sm:p-3.5"
+                  >
+                    <td className="py-2.5 pr-3 font-medium text-ink max-sm:block max-sm:p-0">{row.category}</td>
+                    <td className={`py-2.5 pr-3 leading-relaxed text-graphite ${STACKED_CELL} max-sm:before:text-verdant max-sm:before:content-['Collected']`}>{row.collected}</td>
+                    <td className={`py-2.5 leading-relaxed text-graphite ${STACKED_CELL} max-sm:before:text-signal max-sm:before:content-['Never_collected']`}>{row.never}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {COLLECTION.map((row) => (
-                    <tr key={row.category} className="border-b border-line align-top last:border-0">
-                      <td className="py-2.5 pr-3 font-medium text-ink">{row.category}</td>
-                      <td className="py-2.5 pr-3 leading-relaxed text-graphite">{row.collected}</td>
-                      <td className="py-2.5 leading-relaxed text-graphite">{row.never}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
             <p className="mt-3 text-[12px] leading-relaxed text-slate">
               Never inferred, stored or displayed: {NEVER_INFERRED}. Enforced in code: key values are classified and discarded synchronously, snapshots carry
               no text bodies, and outcome events carry labels only. Behavioral telemetry is still personal data; purpose limitation, minimization and
