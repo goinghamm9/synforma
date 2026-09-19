@@ -2,6 +2,7 @@
 import * as React from "react";
 import { ExternalLink, Eye, Loader2, Play, Square, Users } from "lucide-react";
 import { Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
+import { DemonstrationPanel, GovernanceBadge, type TrustLayerApi } from "@/components/trust";
 import { PERSONAS } from "@/lib/synforma/engine/synthetic";
 import type { Program, Run, RunEvent } from "@/lib/synforma/types";
 import { runDecisionCounts, summarizeDecisions } from "../decisions";
@@ -22,13 +23,16 @@ interface Props {
   program: Program;
   runs: Run[];
   events: RunEvent[];
+  /** Teach by doing: the trust layer's demonstration recorder and reconstruction. */
+  demonstration: TrustLayerApi["demonstration"];
   onRunSynthetic: () => void;
   onStop: () => void;
   onOpenRun: (run: Run) => void;
 }
 
-export function GuidePanel({ state, program, runs, events, onRunSynthetic, onStop, onOpenRun }: Props) {
+export function GuidePanel({ state, program, runs, events, demonstration, onRunSynthetic, onStop, onOpenRun }: Props) {
   const running = state.status === "running";
+  const recording = demonstration.status === "recording";
   const fieldCount = program.parsed?.requirements.filter((r) => r.kind === "field").length ?? 0;
   const synthetic = runs.filter((r) => r.actor === "synthetic");
   const human = runs.filter((r) => r.actor === "human");
@@ -38,7 +42,7 @@ export function GuidePanel({ state, program, runs, events, onRunSynthetic, onSto
     return map;
   }, [events]);
   const decisions = React.useMemo(() => summarizeDecisions(events, runs), [events, runs]);
-  const canRun = Boolean(program.workflow?.steps.length) && !running;
+  const canRun = Boolean(program.workflow?.steps.length) && !running && !recording;
 
   return (
     <div className="space-y-5 p-5">
@@ -69,6 +73,30 @@ export function GuidePanel({ state, program, runs, events, onRunSynthetic, onSto
         </Button>
       </div>
       <Note>The employee view opens in a new tab and shares this program. A human run recorded there appears below with the assistance that was shown, the decisions Synforma withheld, and the person&rsquo;s assistance preference.</Note>
+
+      <section className="space-y-2" data-testid="teach-section">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="eyebrow">Teach Synforma this workflow</span>
+          {program.workflow ? <GovernanceBadge workflow={program.workflow} /> : null}
+        </div>
+        {recording ? (
+          <Note tone="amber">Recording: work in the application on the left as you normally would. Synforma records which controls you use on which screen, never what you type. Stop when the outcome is reached.</Note>
+        ) : demonstration.status === "adopted" ? (
+          <Note tone="verdant">The demonstrated workflow is now the program&rsquo;s workflow of record (governance: reviewed). Understand shows the new version; Act runs it.</Note>
+        ) : null}
+        <DemonstrationPanel
+          status={demonstration.status}
+          trace={demonstration.trace}
+          reconstruction={demonstration.reconstruction}
+          answers={demonstration.answers}
+          onStart={() => void demonstration.start()}
+          onStop={demonstration.stop}
+          onAnswer={demonstration.answer}
+          onAdopt={demonstration.adopt}
+          onDiscard={demonstration.discard}
+          busy={demonstration.busy || running}
+        />
+      </section>
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">

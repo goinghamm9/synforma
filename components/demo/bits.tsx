@@ -247,6 +247,7 @@ const LEVEL_CLASS: Record<LogLevel, string> = {
   approval: "bg-amber-soft text-amber",
   done: "text-verdant",
   change: "bg-surface-2 text-ink",
+  trust: "text-slate",
 };
 
 /** Streaming log with auto-scroll while the user is near the bottom. */

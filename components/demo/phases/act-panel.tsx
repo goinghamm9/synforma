@@ -1,12 +1,20 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, Check, CheckCircle2, Circle, ExternalLink, GitCompareArrows, Loader2, Play, RotateCcw, ShieldCheck, Square, Wrench, XCircle } from "lucide-react";
-import { Badge, Button, Label, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { AlertTriangle, BookOpenCheck, Check, CheckCircle2, Circle, ExternalLink, GitCompareArrows, Loader2, OctagonAlert, Play, RotateCcw, ShieldCheck, Square, Wrench, XCircle } from "lucide-react";
+import { Badge, Button, Label, Switch, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { LedgerTable } from "@/components/trust";
 import { cn, formatDuration } from "@/lib/utils";
-import type { Program, Run } from "@/lib/synforma/types";
+import type { LedgerEntry, Program, Run } from "@/lib/synforma/types";
 import type { RunnerResult } from "@/lib/synforma/engine/runner";
 import type { ChangeRecord, LogLine, UiVariant } from "../types";
 import { ErrorNote, LogView, Note, OutcomeBadge, PanelHeader, Stat } from "../bits";
+
+/** The run was stopped by the trust layer before a step: sources conflict about what should happen there. */
+export interface TrustStop {
+  stepId?: string;
+  reason: string;
+  details: string[];
+}
 
 export interface ActState {
   status: "idle" | "running" | "done" | "stopped" | "error";
@@ -22,6 +30,8 @@ export interface ActState {
   uiVariant: UiVariant | null;
   /** UI changes detected by semantic re-grounding during this run (from `action_regrounded` events). */
   changes: ChangeRecord[];
+  /** Set when the run ended abandoned with reason "conflicting sources". */
+  trustStop: TrustStop | null;
 }
 
 interface Props {
@@ -33,10 +43,16 @@ interface Props {
   plannerName: string;
   requireApproval: boolean;
   agentRuns: Run[];
+  /** Provenance + rollback ledger entries for this program's agent runs. */
+  ledger: LedgerEntry[];
+  undoing: boolean;
   onRun: () => void;
   onStop: () => void;
   onToggleUi: (v: UiVariant) => void;
   onOpenOutcome: (url: string) => void;
+  onUndo: () => void;
+  /** Jump to the Understand phase's evidence section. */
+  onReviewEvidence: () => void;
 }
 
 const DRIFT_TOOLTIP =
@@ -60,7 +76,7 @@ function ChangesCounter({ count }: { count: number }) {
   );
 }
 
-export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requireApproval, agentRuns, onRun, onStop, onToggleUi, onOpenOutcome }: Props) {
+export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requireApproval, agentRuns, ledger, undoing, onRun, onStop, onToggleUi, onOpenOutcome, onUndo, onReviewEvidence }: Props) {
   const workflow = program.workflow;
   const parsed = program.parsed;
   const running = state.status === "running";
@@ -68,8 +84,12 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
   const result = state.result;
   const metSet = new Set(result?.requirementsMet ?? []);
   const lastRun = agentRuns.length ? agentRuns[agentRuns.length - 1] : null;
-  const canRun = Boolean(workflow && workflow.steps.length) && !running && !uiBusy;
+  const canRun = Boolean(workflow && workflow.steps.length) && !running && !uiBusy && !undoing;
   const changes = state.changes ?? [];
+  const trustStop = state.trustStop;
+  const stoppedStep = trustStop?.stepId ? workflow?.steps.find((s) => s.id === trustStop.stepId) : undefined;
+  const stepTitle = React.useCallback((id: string) => workflow?.steps.find((s) => s.id === id)?.title ?? id, [workflow]);
+  const reversible = ledger.filter((e) => e.rollback.possible && !e.rolledBackAt).length;
 
   return (
     <div className="space-y-5 p-5">
@@ -186,6 +206,24 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
             <Stat label="Duration" value={state.startedAt && state.endedAt ? formatDuration(state.endedAt - state.startedAt) : "—"} hint="including pacing" />
             <Stat label="Re-groundings" value={result.regroundings} tone={result.regroundings ? "verdant" : "ink"} hint={state.uiVariant ? `UI ${state.uiVariant}` : undefined} />
           </div>
+          {trustStop ? (
+            <div role="alert" className="flex items-start gap-3 rounded-md border border-signal/30 bg-signal-soft px-3 py-2.5" data-testid="trust-stop">
+              <OctagonAlert className="mt-0.5 h-4 w-4 shrink-0 text-signal" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-ink">Stopped{stoppedStep ? ` before step ${stoppedStep.index + 1} (${stoppedStep.title})` : ""}: sources conflict</div>
+                <p className="mt-0.5 text-xs leading-relaxed text-graphite">{trustStop.reason}</p>
+                {trustStop.details.filter((d) => d !== trustStop.reason).map((d, i) => (
+                  <p key={i} className="mt-0.5 text-xs text-slate">
+                    {d}
+                  </p>
+                ))}
+                <Button size="sm" variant="outline" className="mt-2" onClick={onReviewEvidence} data-testid="review-evidence">
+                  <BookOpenCheck aria-hidden="true" />
+                  Review the evidence
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <ul className="space-y-1" data-testid="result-checklist">
             {fieldReqs.map((r) => {
               const met = metSet.has(r.id);
@@ -228,27 +266,48 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
         </section>
       ) : null}
 
-      {agentRuns.length ? (
-        <section className="space-y-2">
-          <span className="eyebrow">Agent runs · {agentRuns.length}</span>
-          <ul className="divide-y divide-line rounded-lg border border-line text-xs">
-            {agentRuns
-              .slice()
-              .reverse()
-              .slice(0, 6)
-              .map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-                  <span className="mono-data text-slate">{new Date(r.startedAt).toLocaleTimeString([], { hour12: false })}</span>
-                  <OutcomeBadge outcome={r.outcome} />
-                  <span className="text-graphite">
-                    {r.requirementsMet.length}/{fieldReqs.length} requirements
-                  </span>
-                  {r.regroundings ? <span className="text-verdant">{r.regroundings} self-healed</span> : null}
-                  {r.uiVariant ? <span className="ml-auto rounded-full border border-line px-2 py-0.5 text-graphite">UI {r.uiVariant}</span> : null}
-                </li>
-              ))}
-          </ul>
-        </section>
+      {agentRuns.length || ledger.length ? (
+        <Tabs defaultValue="runs" data-testid="act-tabs">
+          <TabsList>
+            <TabsTrigger value="runs">Agent runs · {agentRuns.length}</TabsTrigger>
+            <TabsTrigger value="ledger" data-testid="ledger-tab">
+              Ledger · {ledger.length}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="runs">
+            {agentRuns.length ? (
+              <ul className="divide-y divide-line rounded-lg border border-line text-xs">
+                {agentRuns
+                  .slice()
+                  .reverse()
+                  .slice(0, 6)
+                  .map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+                      <span className="mono-data text-slate">{new Date(r.startedAt).toLocaleTimeString([], { hour12: false })}</span>
+                      <OutcomeBadge outcome={r.outcome} />
+                      <span className="text-graphite">
+                        {r.requirementsMet.length}/{fieldReqs.length} requirements
+                      </span>
+                      {r.regroundings ? <span className="text-verdant">{r.regroundings} self-healed</span> : null}
+                      {r.uiVariant ? <span className="ml-auto rounded-full border border-line px-2 py-0.5 text-graphite">UI {r.uiVariant}</span> : null}
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate">No agent runs yet.</p>
+            )}
+          </TabsContent>
+          <TabsContent value="ledger" className="space-y-2">
+            <p className="text-xs leading-relaxed text-graphite">
+              Every action the agent performed: who asked, what Synforma believed, before → after, approval and result. Fills are undone by restoring the previous value in the live interface, stepping back through the wizard when needed;
+              a committed record needs a compensating action in the target system.
+            </p>
+            <LedgerTable entries={ledger} stepTitle={stepTitle} onUndo={onUndo} undoing={undoing || running} />
+            {reversible && lastRun?.outcome === "completed" && !running ? (
+              <Note tone="amber">The last run committed its record. Undo restores the fields only while the form is still open (for example after a denied approval or a trust stop); a committed record needs a compensating action.</Note>
+            ) : null}
+          </TabsContent>
+        </Tabs>
       ) : null}
     </div>
   );

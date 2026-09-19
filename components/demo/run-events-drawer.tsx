@@ -19,6 +19,10 @@ const TONE: Partial<Record<RunEvent["type"], string>> = {
   approval_denied: "text-signal",
   run_completed: "text-verdant",
   outcome_verified: "text-verdant",
+  trust_decision: "bg-surface-2 text-graphite",
+  ledger_rollback: "text-graphite",
+  claim_contested: "text-signal",
+  demonstration_recorded: "text-graphite",
 };
 
 export function RunEventsDrawer({ run, events, workflow, open, onOpenChange }: { run: Run | null; events: RunEvent[]; workflow?: Workflow; open: boolean; onOpenChange: (open: boolean) => void }) {

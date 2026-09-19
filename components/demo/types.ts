@@ -30,7 +30,7 @@ export interface ConnectionInfo {
   sampleActions: string[];
 }
 
-export type LogLevel = "info" | "warn" | "action" | "heal" | "approval" | "done" | "change";
+export type LogLevel = "info" | "warn" | "action" | "heal" | "approval" | "done" | "change" | "trust";
 
 export interface LogLine {
   id: number;

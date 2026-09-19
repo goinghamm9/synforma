@@ -2,9 +2,10 @@
 import * as React from "react";
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Eye, HelpCircle, Lock, Pencil, Scale, User } from "lucide-react";
 import { Badge, Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { AutonomyContractTable, EvidencePanel, GovernanceBadge, TrustDecisions } from "@/components/trust";
 import { neighbors, nodeId } from "@/lib/synforma/graph/work-graph";
 import { cn, formatPercent } from "@/lib/utils";
-import type { Action, GraphNode, PlannerKind, Program, Requirement, WorkGraph, WorkflowStep } from "@/lib/synforma/types";
+import type { Action, AutonomyContract, Claim, GraphNode, PlannerKind, Program, Requirement, WorkGraph, WorkflowStep } from "@/lib/synforma/types";
 import { ModeBadge, Note, PanelHeader, Stat, TrustBadge } from "../bits";
 
 interface Props {
@@ -13,10 +14,20 @@ interface Props {
   graph?: WorkGraph | null;
   plannerLabel: string;
   plannerName: string;
+  /** Evidence: what Synforma believes and why (claims with source and authority). */
+  claims?: Claim[];
+  contract?: AutonomyContract;
+  /** Increment to scroll the evidence section into view (e.g. after a run stopped on conflicting sources). */
+  evidenceFocus?: number;
+  onValidateClaim?: (claim: Claim, ok: boolean) => void;
+  onContractChange?: (next: AutonomyContract) => void;
+  onApproveContract?: () => void;
   onApprove: () => void;
   onEdit: () => void;
   onDiscover: () => void;
 }
+
+const EMPTY_CLAIMS: Claim[] = [];
 
 function expectationText(r: Requirement): string | null {
   const e = r.expectation;
@@ -112,10 +123,15 @@ function StepCard({ step, requirements, node, planner }: { step: WorkflowStep; r
   );
 }
 
-export function UnderstandPanel({ program, graph, plannerLabel, plannerName, onApprove, onEdit, onDiscover }: Props) {
+export function UnderstandPanel({ program, graph, plannerLabel, plannerName, claims = EMPTY_CLAIMS, contract, evidenceFocus = 0, onValidateClaim, onContractChange, onApproveContract, onApprove, onEdit, onDiscover }: Props) {
   const parsed = program.parsed;
   const workflow = program.workflow;
   const nodeById = React.useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, n] as const)), [graph]);
+  const evidenceRef = React.useRef<HTMLElement>(null);
+  const contested = React.useMemo(() => claims.filter((c) => c.status === "contested").length, [claims]);
+  React.useEffect(() => {
+    if (evidenceFocus > 0) evidenceRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [evidenceFocus]);
   if (!parsed || !workflow) {
     return (
       <div className="space-y-4 p-5">
@@ -245,8 +261,11 @@ export function UnderstandPanel({ program, graph, plannerLabel, plannerName, onA
       ) : null}
 
       <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="eyebrow">Workflow · {workflow.steps.length} steps</span>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <span className="eyebrow">Workflow · {workflow.steps.length} steps</span>
+            <GovernanceBadge workflow={workflow} />
+          </span>
           <span className="mono-data text-[11px] text-slate">starts at {workflow.startUrl}</span>
         </div>
         {workflow.steps.length === 0 ? (
@@ -265,6 +284,29 @@ export function UnderstandPanel({ program, graph, plannerLabel, plannerName, onA
         ) : (
           <p className="text-[11px] text-amber">No outcome screen recognized yet; verification will fall back to any detail page.</p>
         )}
+      </section>
+
+      <section ref={evidenceRef} id="evidence" className="scroll-mt-4 space-y-2" data-testid="evidence-section" data-contested={contested}>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <span className="eyebrow">Evidence · {claims.filter((c) => c.status !== "retired").length} claims</span>
+          <span className="text-[11px] text-slate">{contested ? <span className="text-signal">{contested} contested — autonomy stops on the affected steps</span> : "No conflicting sources"}</span>
+        </div>
+        <p className="text-xs leading-relaxed text-graphite">
+          Synforma stores claims, not facts: each carries its source, an authority level and a confidence. The objective outranks the planner; a live observation outranks both. Disagreements are shown, never guessed away.
+        </p>
+        <EvidencePanel claims={claims} onValidate={onValidateClaim} />
+      </section>
+
+      <section className="space-y-2" data-testid="contract-section">
+        <span className="eyebrow">Autonomy Contract</span>
+        <p className="text-xs leading-relaxed text-graphite">What Synforma may do on a person&rsquo;s behalf in this workflow, by action class. Autonomy grows with reversibility; consequential writes ask, destructive actions never run alone.</p>
+        {contract ? <AutonomyContractTable contract={contract} onChange={onContractChange} onApprove={onApproveContract} /> : <Note>The contract is generated once the workflow is known.</Note>}
+      </section>
+
+      <section className="space-y-2" data-testid="trust-section">
+        <span className="eyebrow">Trust decisions · per step</span>
+        <p className="text-xs leading-relaxed text-graphite">Risk from the action class, confidence from the model and the evidence, policy from the contract. Conflicting sources stop autonomy on that step until a person resolves them.</p>
+        <TrustDecisions workflow={workflow} contract={contract} claims={claims} />
       </section>
 
       <div className="flex flex-wrap items-center gap-2">

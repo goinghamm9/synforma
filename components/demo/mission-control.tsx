@@ -4,10 +4,12 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Cpu, Loader2, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Skeleton } from "@/components/ui";
+import { CLASS_SHORT, DECISION_LABEL, useTrustLayer } from "@/components/trust";
 import { useSynforma } from "@/lib/synforma/store";
 import { IframeDriver } from "@/lib/synforma/interaction/driver";
 import { explore, type DiscoveredState } from "@/lib/synforma/engine/explorer";
 import { runWorkflow } from "@/lib/synforma/engine/runner";
+import { bumpVersion } from "@/lib/synforma/engine/demonstration";
 import { decide } from "@/lib/synforma/engine/adoption";
 import { FRICTION_SHORT } from "@/lib/synforma/engine/friction";
 import { PERSONAS, type Persona } from "@/lib/synforma/engine/synthetic";
@@ -17,7 +19,7 @@ import { createPlanner, fetchPlannerStatus, resolvePlannerKind } from "@/lib/syn
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
 import { cloneGraph, countByType, createGraph } from "@/lib/synforma/graph/work-graph";
 import { DEFAULT_CONTEXT, DEFAULT_OBJECTIVE, SANDBOX_APP } from "@/lib/synforma/demo";
-import type { ApprovalRequest, AssistancePreference, FrictionState, Hypothesis, PageModel, PlannerKind, Program, Run, RunEventType, StruggleType, WorkGraph } from "@/lib/synforma/types";
+import type { ActionClass, ApprovalRequest, AssistancePreference, FrictionState, Hypothesis, PageModel, PlannerKind, Program, Run, RunEventType, StruggleType, TrustDecision, WorkGraph, Workflow } from "@/lib/synforma/types";
 import { cn, shortId } from "@/lib/utils";
 import { PHASE_INDEX, PREFERENCE_LABEL, type ChangeRecord, type ConnectionInfo, type LogLevel, type LogLine, type OverlayTarget, type PhaseId, type UiVariant } from "./types";
 import { clearPrefs, readPrefs, readSandboxUiVariant, writePrefs } from "./demo-prefs";
@@ -48,7 +50,7 @@ import { MeasurePanel } from "./phases/measure-panel";
 const EMPTY_COUNTERS = { screens: 0, actions: 0, fields: 0, objects: 0, states: 0 };
 
 const INITIAL_DISCOVERY: DiscoveryState = { status: "idle", log: [], counters: EMPTY_COUNTERS, stats: null, error: null, startedAt: null, planned: null };
-const INITIAL_ACT: ActState = { status: "idle", runId: null, log: [], result: null, currentStepId: null, stepStatus: {}, startedAt: null, endedAt: null, error: null, regroundings: 0, uiVariant: null, changes: [] };
+const INITIAL_ACT: ActState = { status: "idle", runId: null, log: [], result: null, currentStepId: null, stepStatus: {}, startedAt: null, endedAt: null, error: null, regroundings: 0, uiVariant: null, changes: [], trustStop: null };
 const INITIAL_SYNTH: SynthState = { status: "idle", currentPersonaId: null, completed: 0, error: null };
 
 const STRUGGLE_EVENTS: Partial<Record<RunEventType, { type: StruggleType; magnitude: number }>> = {
@@ -157,6 +159,22 @@ function patchProgram(id: string, patch: Partial<Program>) {
   s.upsertProgram({ ...current, ...patch });
 }
 
+/**
+ * Workflow versioning: "1.0" with a changelog entry at first planning; bumped on every re-plan
+ * (the previous changelog is carried over). Machine-discovered process knowledge starts as "discovered".
+ */
+function versionWorkflow(workflow: Workflow, previous: Workflow | undefined, planner: PlannerKind, replanned: boolean): Workflow {
+  const version = previous?.version ? bumpVersion(previous.version) : "1.0";
+  const reason = previous ? (replanned ? `Re-planned from the existing discovery by the ${planner} planner` : `Re-discovered and re-planned by the ${planner} planner`) : `Inferred from discovery by the ${planner} planner`;
+  return {
+    ...workflow,
+    version,
+    origin: "discovery",
+    changelog: [...(previous?.changelog ?? []), { version, at: Date.now(), reason, source: previous ? "re-plan" : "discovery" }],
+    governance: { status: "discovered" },
+  };
+}
+
 /** Remove planner-produced nodes so a re-plan starts from the discovered structure only. */
 function stripPlan(graph: WorkGraph): WorkGraph {
   const drop = new Set(graph.nodes.filter((n) => n.type === "workflow" || n.type === "step" || n.type === "requirement").map((n) => n.id));
@@ -198,9 +216,9 @@ export function MissionControl() {
   const pendingGraph = React.useRef<WorkGraph | null>(null);
   const approvalResolver = React.useRef<((d: "granted" | "denied") => void) | null>(null);
   const approvalRequest = React.useRef<ApprovalRequest | null>(null);
-  /** Human-readable names of the last re-grounding reported by the driver (the runner's event carries the semantic key). */
-  const lastHeal = React.useRef<{ from: string; to: string } | null>(null);
   const changeSeq = React.useRef(0);
+  /** Workflow identity (id@version) the claims and contract were last derived for; undefined until the store is ready. */
+  const trustedWorkflow = React.useRef<string | null | undefined>(undefined);
 
   const [phase, setPhaseState] = React.useState<PhaseId>("connect");
   const [phaseReady, setPhaseReady] = React.useState(false);
@@ -219,6 +237,12 @@ export function MissionControl() {
   const [uiBusy, setUiBusy] = React.useState(false);
   const [drawerRun, setDrawerRun] = React.useState<Run | null>(null);
   const [confirmReset, setConfirmReset] = React.useState(false);
+  /** Incremented to scroll the Understand phase to its evidence section. */
+  const [evidenceFocus, setEvidenceFocus] = React.useState(0);
+
+  // ─────────────── trust layer: evidence, contract, ledger, demonstration ───────────────
+  const getDriver = React.useCallback(() => driverRef.current, []);
+  const trust = useTrustLayer(program, getDriver);
 
   const connected = connection.status === "connected";
   const plannerKind: PlannerKind | null = program ? program.planner : plannerStatus ? resolvePlannerKind(settings.plannerPreference, plannerStatus) : null;
@@ -343,14 +367,15 @@ export function MissionControl() {
 
   // ─────────────── discovery + planning ───────────────
   const plan = React.useCallback(
-    async (prog: Program, states: DiscoveredState[], graph: WorkGraph, kind: PlannerKind) => {
+    async (prog: Program, states: DiscoveredState[], graph: WorkGraph, kind: PlannerKind, replanned = false) => {
       setDiscovery((d) => ({ ...d, status: "planning", error: null }));
       try {
         const planner = createPlanner(kind);
         const parsed = await planner.parseObjective({ objectiveText: prog.objectiveText, appName: SANDBOX_APP.name });
-        const workflow = await planner.inferWorkflow({ parsed, states, graph, startUrl: SANDBOX_APP.baseUrl });
+        const inferred = await planner.inferWorkflow({ parsed, states, graph, startUrl: SANDBOX_APP.baseUrl });
         const fallback = kind === "gemini" ? ((planner as { lastError?: string | null }).lastError ?? null) : null;
         const effectiveKind: PlannerKind = fallback ? "heuristic" : kind;
+        const workflow = versionWorkflow(inferred, prog.workflow, effectiveKind, replanned);
         const s = useSynforma.getState();
         s.saveGraph(graph);
         const fieldReqs = parsed.requirements.filter((r) => r.kind === "field");
@@ -363,7 +388,7 @@ export function MissionControl() {
           detail: `${effectiveKind} planner · ${mapped}/${fieldReqs.length} requirements mapped · ${workflow.steps.length} steps${fallback ? ` · Gemini unavailable (${fallback}), heuristic fallback` : ""}`,
         });
         setLiveGraph(cloneGraph(graph));
-        pushDiscoveryLog("done", `${effectiveKind} planner mapped ${mapped}/${fieldReqs.length} requirements into ${workflow.steps.length} steps${fallback ? ` (Gemini unavailable: ${fallback})` : ""}`);
+        pushDiscoveryLog("done", `${effectiveKind} planner mapped ${mapped}/${fieldReqs.length} requirements into ${workflow.steps.length} steps (workflow v${workflow.version})${fallback ? ` (Gemini unavailable: ${fallback})` : ""}`);
         setDiscovery((d) => ({ ...d, status: "done", planned: { mapped, total: fieldReqs.length, steps: workflow.steps.length } }));
         setPhase("understand");
       } catch (e) {
@@ -494,7 +519,7 @@ export function MissionControl() {
         setPhase("discover");
         setLiveGraph(cloneGraph(graph));
         pushDiscoveryLog("info", `Re-planning with the existing discovery (${existing.length} states)`);
-        await plan(prog, existing, graph, kind);
+        await plan(prog, existing, graph, kind, true);
         return;
       }
       await discover(prog, kind);
@@ -506,6 +531,31 @@ export function MissionControl() {
     abortRef.current?.abort();
     pushDiscoveryLog("warn", "Stop requested — finishing the current action");
   }, [pushDiscoveryLog]);
+
+  // Derive the evidence and the Autonomy Contract whenever the workflow of record changes in this session
+  // (first plan, re-plan, adopted demonstration). The first observation after hydration only records the
+  // identity, so claims persisted from earlier sessions (including superseded naming claims) are kept.
+  const ready = hydrated && phaseReady;
+  const { refreshClaims, ensureContract, applyRegroundings } = trust;
+  const workflowKey = program?.workflow ? `${program.workflow.id}@${program.workflow.version ?? ""}` : null;
+  React.useEffect(() => {
+    if (!ready) return;
+    if (trustedWorkflow.current === undefined) {
+      trustedWorkflow.current = workflowKey;
+      return;
+    }
+    if (trustedWorkflow.current === workflowKey) return;
+    trustedWorkflow.current = workflowKey;
+    if (!workflowKey || !programId) return;
+    const s = useSynforma.getState();
+    const claims = refreshClaims();
+    // Live observations from earlier agent runs (controls renamed by the vendor) outlive any re-plan: fold them back in.
+    const agentRuns = new Set(Object.values(s.runs).filter((r) => r.programId === programId && r.actor === "agent").map((r) => r.id));
+    applyRegroundings(s.events.filter((e) => e.type === "action_regrounded" && agentRuns.has(e.runId)));
+    const contract = ensureContract();
+    const contested = claims.filter((c) => c.status === "contested").length;
+    s.addAudit({ actor: "synforma", action: "Evidence derived", programId, detail: `${claims.length} claims · ${contested} contested · contract v${contract?.version ?? "?"}` });
+  }, [ready, workflowKey, refreshClaims, ensureContract, applyRegroundings, programId]);
 
   const restartDiscovery = React.useCallback(() => {
     const s = useSynforma.getState();
@@ -545,15 +595,15 @@ export function MissionControl() {
     s.addAudit({ actor: "agent", action: "Run started", runId, programId: prog.id, detail: `Act mode · UI ${variant} · workflow by ${prog.planner} planner` });
     setAct({ ...INITIAL_ACT, status: "running", runId, startedAt, uiVariant: variant });
     driver.paceMs = 350;
-    lastHeal.current = null;
     driverLogSink.current = (m) => {
       const heal = /^Re-grounded "(.+?)" → "(.+?)"/.exec(m);
-      if (heal) {
-        lastHeal.current = { from: heal[1], to: heal[2] };
-        pushActLog("heal", `Self-healed: ${heal[1]} → ${heal[2]}`);
-      } else if (/could not/i.test(m)) pushActLog("warn", m);
+      if (heal) pushActLog("heal", `Self-healed: ${heal[1]} → ${heal[2]}`);
+      else if (/could not/i.test(m)) pushActLog("warn", m);
     };
     let regroundings = 0;
+    // Trust layer: the workflow's Autonomy Contract and the current evidence gate every step; every action goes to the ledger.
+    const contract = s.contracts[workflow.id];
+    const claims = s.claims[prog.id] ?? [];
     try {
       const result = await runWorkflow({
         driver,
@@ -563,7 +613,14 @@ export function MissionControl() {
         actor: "agent",
         requireApprovalForCommit: s.settings.requireApprovalForCommit,
         signal: ac.signal,
+        contract,
+        claims,
+        runId,
+        programId: prog.id,
+        intent: workflow.title,
+        decidedBy: prog.planner,
         hooks: {
+          onLedger: (entry) => useSynforma.getState().addLedger(entry),
           onEvent: (type, data, stepId, message) => {
             const store = useSynforma.getState();
             store.addEvent({ runId, type, data, stepId, message });
@@ -580,11 +637,9 @@ export function MissionControl() {
               }
               case "action_regrounded": {
                 regroundings += 1;
-                // The runner reports the semantic key it re-grounded to; the driver logged the accessible name just before.
-                const d = data as { from?: string; to?: string; change?: { screen?: string | null; affectedStep?: string; risk?: string } } | undefined;
+                const d = data as { from?: string; to?: string; toName?: string | null; change?: { screen?: string | null; affectedStep?: string; risk?: string } } | undefined;
                 const from = d?.from ?? "?";
-                const heal = lastHeal.current;
-                const to = heal && heal.from === from ? heal.to : (d?.to ?? "?");
+                const to = d?.toName ?? d?.to ?? "?";
                 const change: ChangeRecord = { id: ++changeSeq.current, t: Date.now(), stepId, screen: d?.change?.screen ?? step?.route ?? null, from, to, risk: d?.change?.risk ?? "low" };
                 setAct((a) => ({ ...a, regroundings, changes: [...a.changes, change] }));
                 pushActLog("change", `UI change detected on ${change.screen ?? "unknown screen"}: '${change.from}' is now '${change.to}' · ${change.risk} risk · re-verified by execution`);
@@ -614,10 +669,23 @@ export function MissionControl() {
                 pushActLog("warn", `Run failed${message ? `: ${message}` : ""}`);
                 store.addAudit({ actor: "agent", action: "Run failed", runId, programId: prog.id, detail: message ?? (data?.error as string | undefined) ?? (data?.reason as string | undefined) });
                 break;
-              case "run_abandoned":
-                pushActLog("warn", "Run abandoned");
-                store.addAudit({ actor: "agent", action: "Run abandoned", runId, programId: prog.id, detail: (data?.reason as string | undefined) ?? message });
+              case "run_abandoned": {
+                const reason = data?.reason as string | undefined;
+                if (reason === "conflicting sources") {
+                  const details = Array.isArray(data?.details) ? (data.details as string[]) : [];
+                  setAct((a) => ({ ...a, trustStop: { stepId, reason: message ?? details[0] ?? "Sources conflict about what should happen.", details } }));
+                  pushActLog("warn", `Stopped before ${step ? `step ${step.index + 1} (${step.title})` : "the step"}: sources conflict — a person must resolve the evidence first`);
+                } else pushActLog("warn", "Run abandoned");
+                store.addAudit({ actor: "agent", action: reason === "conflicting sources" ? "Run stopped by the trust layer" : "Run abandoned", target: step?.title, runId, programId: prog.id, detail: reason ?? message });
                 break;
+              }
+              case "trust_decision": {
+                const d = data as { decision?: TrustDecision; actionClass?: ActionClass; risk?: number } | undefined;
+                const decision = d?.decision ? DECISION_LABEL[d.decision].toLowerCase() : "?";
+                const cls = d?.actionClass ? CLASS_SHORT[d.actionClass] : "?";
+                pushActLog("trust", `Trust: ${decision} (${cls})${typeof d?.risk === "number" ? ` · risk ${d.risk.toFixed(2)}` : ""}`);
+                break;
+              }
               case "validation_error":
               case "action_failed":
                 pushActLog("warn", message ?? type);
@@ -640,7 +708,10 @@ export function MissionControl() {
       driverLogSink.current = null;
       hideOverlays();
       const endedAt = Date.now();
-      useSynforma.getState().updateRun(runId, { endedAt, outcome: result.outcome, requirementsMet: result.requirementsMet, regroundings: result.regroundings });
+      const store = useSynforma.getState();
+      store.updateRun(runId, { endedAt, outcome: result.outcome, requirementsMet: result.requirementsMet, regroundings: result.regroundings });
+      // Live observations from re-groundings supersede the old naming claims in the evidence.
+      if (result.regroundings) trust.applyRegroundings(store.events.filter((e) => e.runId === runId));
       setAct((a) => ({ ...a, status: "done", result, endedAt, regroundings: result.regroundings, currentStepId: null }));
       setCurrentUrl(driver.currentUrl());
       const total = parsed.requirements.filter((r) => r.kind === "field").length;
@@ -657,12 +728,43 @@ export function MissionControl() {
       store.addAudit({ actor: "agent", action: aborted ? "Run stopped by operator" : "Run failed", runId, programId: prog.id, detail: aborted ? undefined : errorMessage(e) });
       setAct((a) => ({ ...a, status: aborted ? "stopped" : "error", error: aborted ? null : errorMessage(e), endedAt, currentStepId: null }));
     }
-  }, [context, hideOverlays, programId, pushActLog]);
+  }, [context, hideOverlays, programId, pushActLog, trust]);
 
   const stopRun = React.useCallback(() => {
     abortRef.current?.abort();
     if (approvalResolver.current) decideApproval("denied");
   }, [decideApproval]);
+
+  /** Undo reversible fills of the ledger in the live interface (steps back through the wizard when needed). */
+  const undoLedger = React.useCallback(async () => {
+    const driver = driverRef.current;
+    if (!driver || act.status === "running") return;
+    try {
+      const restored = await trust.undo();
+      hideOverlays();
+      setCurrentUrl(driver.currentUrl());
+      if (restored > 0) toast.success(`Restored ${restored} field${restored === 1 ? "" : "s"}`, { description: "Previous values written back in the live interface; the ledger rows are marked undone." });
+      else toast.warning("Nothing could be restored", { description: "The fields are no longer on screen. A committed record needs a compensating action in the target system, which the sandbox does not expose." });
+    } catch (e) {
+      hideOverlays();
+      toast.error(`Undo failed: ${errorMessage(e)}`);
+    }
+  }, [act.status, hideOverlays, trust]);
+
+  const reviewEvidence = React.useCallback(() => {
+    setEvidenceFocus((n) => n + 1);
+    setPhase("understand");
+  }, [setPhase]);
+
+  /** Teach by doing: the person drives the sandbox directly, so the agent overlays must be out of the way. */
+  const startDemonstration = React.useCallback(async () => {
+    abortRef.current?.abort();
+    hideOverlays();
+    driverLogSink.current = null;
+    await trust.demonstration.start();
+    const driver = driverRef.current;
+    if (driver) setCurrentUrl(driver.currentUrl());
+  }, [hideOverlays, trust]);
 
   const openOutcome = React.useCallback(async (url: string) => {
     const driver = driverRef.current;
@@ -807,6 +909,11 @@ export function MissionControl() {
           capabilities: persona.capabilities,
           requireApprovalForCommit: false,
           signal: ac.signal,
+          // No contract or claims: a simulation is never blocked by a contested claim. No ledger either: simulation stays out of provenance and undo.
+          runId,
+          programId: prog.id,
+          intent: workflow.title,
+          decidedBy: prog.planner,
           hooks: {
             onEvent: (type, data, stepId, message) => {
               const store = useSynforma.getState();
@@ -885,7 +992,13 @@ export function MissionControl() {
       s.addAudit({ actor: "admin", action: "Program deleted", programId: id, target: s.programs[id]?.title });
       s.deleteProgram(id);
       clearPrefs(id);
+      // deleteProgram removes the contract of the current workflow only; earlier versions (re-plans, demonstrations) would linger.
+      useSynforma.setState((st) => {
+        const live = new Set(Object.values(st.programs).map((p) => p.workflow?.id).filter(Boolean));
+        return { contracts: Object.fromEntries(Object.entries(st.contracts).filter(([wid]) => live.has(wid))) };
+      });
     }
+    trust.demonstration.discard();
     setDiscovery(INITIAL_DISCOVERY);
     setLiveGraph(null);
     setAct(INITIAL_ACT);
@@ -931,7 +1044,22 @@ export function MissionControl() {
   }, []);
 
   // ─────────────── derived ───────────────
-  const busyLabel = discovery.status === "running" ? "Discovering" : discovery.status === "planning" ? "Planning" : act.status === "running" ? "Acting" : synth.status === "running" ? "Simulating" : uiBusy ? "Switching UI" : null;
+  const busyLabel =
+    discovery.status === "running"
+      ? "Discovering"
+      : discovery.status === "planning"
+        ? "Planning"
+        : act.status === "running"
+          ? "Acting"
+          : synth.status === "running"
+            ? "Simulating"
+            : uiBusy
+              ? "Switching UI"
+              : trust.undoing
+                ? "Undoing fills"
+                : trust.demonstration.status === "recording"
+                  ? "Recording your demonstration"
+                  : null;
   const maxIndex = maxPhaseIndex(program, connected);
   const completedPhases = React.useMemo(() => {
     const set = new Set<PhaseId>();
@@ -950,7 +1078,8 @@ export function MissionControl() {
   const graphForPreview = liveGraph ?? storeGraph;
 
   // ─────────────── render ───────────────
-  const ready = hydrated && phaseReady;
+  const programLedger = React.useMemo(() => trust.ledger.filter((e) => e.programId === programId && e.requestedBy === "agent"), [trust.ledger, programId]);
+  const demonstration = React.useMemo(() => ({ ...trust.demonstration, start: startDemonstration }), [trust.demonstration, startDemonstration]);
 
   let panel: React.ReactNode;
   if (!ready) panel = <PanelSkeleton />;
@@ -985,7 +1114,23 @@ export function MissionControl() {
     );
   else if (!program) panel = <PanelSkeleton />;
   else if (phase === "understand")
-    panel = <UnderstandPanel program={program} graph={storeGraph} plannerLabel={plannerLabel} plannerName={plannerName} onApprove={approveProgram} onEdit={() => setPhase("objective")} onDiscover={() => setPhase("discover")} />;
+    panel = (
+      <UnderstandPanel
+        program={program}
+        graph={storeGraph}
+        plannerLabel={plannerLabel}
+        plannerName={plannerName}
+        claims={trust.claims}
+        contract={trust.contract}
+        evidenceFocus={evidenceFocus}
+        onValidateClaim={trust.validate}
+        onContractChange={trust.setContract}
+        onApproveContract={trust.approveContract}
+        onApprove={approveProgram}
+        onEdit={() => setPhase("objective")}
+        onDiscover={() => setPhase("discover")}
+      />
+    );
   else if (phase === "act")
     panel = (
       <ActPanel
@@ -996,13 +1141,18 @@ export function MissionControl() {
         plannerName={plannerName}
         requireApproval={settings.requireApprovalForCommit}
         agentRuns={programRuns.filter((r) => r.actor === "agent")}
+        ledger={programLedger}
+        undoing={trust.undoing}
         onRun={() => void runAct()}
         onStop={stopRun}
         onToggleUi={(v) => void toggleUi(v)}
         onOpenOutcome={(url) => void openOutcome(url)}
+        onUndo={() => void undoLedger()}
+        onReviewEvidence={reviewEvidence}
       />
     );
-  else if (phase === "guide") panel = <GuidePanel state={synth} program={program} runs={programRuns} events={programEvents} onRunSynthetic={() => void runSynthetic()} onStop={stopSynthetic} onOpenRun={setDrawerRun} />;
+  else if (phase === "guide")
+    panel = <GuidePanel state={synth} program={program} runs={programRuns} events={programEvents} demonstration={demonstration} onRunSynthetic={() => void runSynthetic()} onStop={stopSynthetic} onOpenRun={setDrawerRun} />;
   else if (phase === "adapt") panel = <AdaptPanel program={program} interventions={programInterventions} hypotheses={programHypotheses} runs={programRuns} events={programEvents} onGoGuide={() => setPhase("guide")} />;
   else
     panel = (
