@@ -557,6 +557,11 @@ export function MissionControl() {
     s.addAudit({ actor: "synforma", action: "Evidence derived", programId, detail: `${claims.length} claims · ${contested} contested · contract v${contract?.version ?? "?"}` });
   }, [ready, workflowKey, refreshClaims, ensureContract, applyRegroundings, programId]);
 
+  // A program restored without a contract for its workflow (data from before the trust layer) gets the default one.
+  React.useEffect(() => {
+    if (ready && workflowKey && !trust.contract) ensureContract();
+  }, [ready, workflowKey, trust.contract, ensureContract]);
+
   const restartDiscovery = React.useCallback(() => {
     const s = useSynforma.getState();
     const prog = programId ? s.programs[programId] : null;

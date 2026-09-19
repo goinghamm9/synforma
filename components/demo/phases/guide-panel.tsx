@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import Link from "next/link";
 import { ExternalLink, Eye, Loader2, Play, Square, Users } from "lucide-react";
 import { Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { DemonstrationPanel, GovernanceBadge, type TrustLayerApi } from "@/components/trust";
@@ -62,10 +63,10 @@ export function GuidePanel({ state, program, runs, events, demonstration, onRunS
 
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild>
-          <a href="/employee" target="_blank" rel="noreferrer" data-testid="open-employee">
+          <Link href="/employee" target="_blank" rel="noreferrer" data-testid="open-employee">
             <ExternalLink aria-hidden="true" />
             Open employee view
-          </a>
+          </Link>
         </Button>
         <Button variant="outline" onClick={onRunSynthetic} disabled={!canRun} data-testid="run-synthetic">
           {running ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Users aria-hidden="true" />}
