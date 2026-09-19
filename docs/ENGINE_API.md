@@ -166,3 +166,15 @@ Runner hook `onLedger(entry)` receives a `LedgerEntry` per executed action (befo
 
 ### Workflow versioning
 `workflow.version` ("1.0"…), `workflow.changelog[]`, `workflow.origin`, `workflow.governance { status: discovered|reviewed|approved|approved_with_exceptions|rejected, owner, at, note }`. Set version "1.0" with a changelog entry at first planning; bump on re-plan / demonstration (`bumpVersion`).
+
+## Trust layer UI — `@/components/trust`
+
+Presentational components (no store access) plus one hook:
+- `EvidencePanel({ claims, onValidate?, compact? })` — truth report by authority, contested claims first (they stop autonomy), confirm/reject.
+- `AutonomyContractTable({ contract, onChange?, onApprove?, readOnly? })` — per action class: person / Synforma (auto · ask · never); C and D can never be "auto".
+- `TrustDecisions({ workflow, contract, claims })` — per-step decision (act · prepare + ask · guide · ask · stop) with risk bar and reasons.
+- `LedgerTable({ entries, stepTitle?, onUndo?, undoing? })` — provenance rows with before → after, approval, result, undo capability; "Undo N fills".
+- `GovernanceBadge({ workflow })` — version + governance status with the changelog popover.
+- `DemonstrationPanel({ status, trace, reconstruction, answers, onStart, onStop, onAnswer, onAdopt, onDiscard })` — teach by doing.
+- `useTrustLayer(program, getDriver)` → `{ claims, contract, ledger, refreshClaims(), applyRegroundings(events), validate(claim, ok), ensureContract(), setContract(next), approveContract(), undo(), undoing, demonstration: { status, trace, reconstruction, answers, start(), stop(), answer(), adopt(), discard(), busy } }`.
+  Call `refreshClaims()` after planning / re-planning; `ensureContract()` when a workflow exists; pass `contract` and `claims` plus `runId/programId/intent/decidedBy` and `hooks.onLedger: addLedger` to `runWorkflow`; call `applyRegroundings(runEvents)` after an Act run. `undo()` restores reversible fills in the live iframe (steps back through Back/Previous when needed) and marks ledger rows. Adopting a demonstration writes the new workflow version (governance "reviewed" with the answers as the note), adds its nodes to the graph, and creates a default contract.

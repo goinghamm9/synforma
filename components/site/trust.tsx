@@ -3,6 +3,18 @@ import { Section, SectionHeader } from "./section";
 
 const GUARANTEES: { title: string; body: string }[] = [
   {
+    title: "Evidence, not facts",
+    body: "Every assertion carries its source, authority, freshness, confidence and scope. When the objective, the configuration and the live interface disagree, Synforma shows the conflict and stops rather than guessing.",
+  },
+  {
+    title: "Autonomy Contract",
+    body: "Every workflow states what Synforma may do on a person's behalf, per action class: automatic, ask, or never. Autonomy grows with reversibility and shrinks with consequence.",
+  },
+  {
+    title: "Rollback ledger",
+    body: "Each action records who asked, what Synforma believed, what it relied on, before and after state, the approval and whether it can be undone. Git history for enterprise work.",
+  },
+  {
     title: "Identity",
     body: "Every action is bound to a verified person or a named service identity. Nothing runs as “the system”.",
   },
