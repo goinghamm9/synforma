@@ -19,7 +19,9 @@ audit log; the ability to act in target applications; the optional LLM API key (
 | Cross-tenant leakage | Single-tenant local store | `org_id` on every row, RLS, per-user private collections |
 | Compromised extension / supply chain | Not applicable (no extension yet); dependencies pinned in the lockfile | Signed releases, dependency scanning, controlled CI/CD |
 | Token theft | No durable secrets in the browser; the Gemini key is read only in the route handler | Short-lived OAuth/OIDC tokens, managed secret store |
-| Poisoned workflow learning | Nodes carry provenance and trust state; inferred nodes never overwrite observed facts (`upsertNode` ranks status) | Human confirmation edges; drift verification before promotion |
+| Poisoned workflow learning | Nodes carry provenance and trust state; inferred nodes never overwrite observed facts (`upsertNode` ranks status); claims record contradictions and the runner stops on conflict (`engine/evidence.ts`, `engine/trust.ts`) | Human confirmation edges; drift verification before promotion; owner review of demonstrated workflows (governance lifecycle) |
+| Over-broad autonomy | Autonomy Contract per workflow: consequential writes ask, destructive never; the UI cannot set classes C/D to automatic | Approval tokens bound to parameter hashes; permission + authority graph (can technically / is authorized / Synforma may / always ask) |
+| Unrecoverable agent mistakes | Provenance ledger with before/after state; reversible fills can be undone in the live interface | Compensating actions through connectors; time-range rollback ("undo 2:00–2:15") |
 | Surveillance misuse by admins | Aggregates only in Measure; recommendation classes never single out a person | Minimum cohort size, role-based firewall tests |
 
 ## Explicit non-goals

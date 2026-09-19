@@ -35,5 +35,20 @@ configured for Meridian CRM anywhere in the repo.
     help ("Additional navigation training is unlikely to help"). Intent-to-Outcome Rate shows "Still learning"
     until five runs exist; run the synthetic users to see it fill in, labeled as simulation.
 
+13. **Evidence.** In Understand, open the evidence panel: every requirement is an organization-approved claim,
+    every field a live observation, every mapping a model inference with its confidence. Edit the objective so
+    requirement 2 accepts "Signed or Countersigned" and re-plan: the claim becomes contested ("the interface
+    offers Unknown, Requested, Approved, Allocated"), the trust decision for Qualification reads **Stop**, and
+    Act refuses to run that step until a person resolves it.
+14. **Autonomy Contract.** Reads: read and reversible writes automatic, consequential writes ask, destructive
+    never. Try to set "Create opportunity" (class C) to automatic: not allowed. Approve the contract.
+15. **Ledger and undo.** After an Act run, open the ledger: every action with who asked, what Synforma
+    believed, before → after, approval and result. Press "Undo fills": Synforma steps back through the wizard
+    and restores each field's previous value; the rows show as undone.
+16. **Teach by doing.** In Guide & Observe choose "Teach Synforma this workflow", perform it once yourself
+    (Synforma records which controls you used, never what you typed), stop: it reconstructs the steps, marks
+    what needs judgment, asks whether the final action should always require approval, and versions the
+    workflow (v1.1, governance "reviewed") when you adopt it. Run Act on the adopted version.
+
 The reaction to aim for: *You didn't configure this? No. You didn't build the walkthrough? No. You didn't tag
 the UI? No. It figured out the workflow itself? Yes.*
