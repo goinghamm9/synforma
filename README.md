@@ -75,9 +75,13 @@ the LLM can improve understanding but cannot invent techniques, citations or sta
 
 Real: the universal interaction layer (semantic DOM snapshot, grounding, driver), autonomous discovery,
 objective parsing, workflow inference, Guide/Assist/Act classification, execution with approval gates and
-audit, outcome verification, human observation, struggle diagnosis, intervention scoring and composition,
-control/treatment cohorts, synthetic users, metrics from stored events, and semantic self-healing across
-the sandbox's two UI versions. All of it is exercised end to end by `verify/engine.spec.js`.
+audit, outcome verification, human observation with pointer and keyboard-metadata sensing (never typed
+text), an observable friction taxonomy, DO_NOTHING as a first-class decision, intervention scoring and
+composition, proficiency fading, Get It Done, control/treatment cohorts, synthetic users, metrics from
+stored events, an admin system-vs-human diagnosis, semantic self-healing across the sandbox's two UI
+versions, and the trust layer: evidence claims with contradictions that stop autonomy, an Autonomy
+Contract per workflow, a provenance ledger with undo, and teach-by-demonstration with versioned,
+governed workflows. All of it is exercised end to end by the scripts in `verify/`.
 
 Not yet: enterprise connectors (the tiles on the site are roadmap), server-side persistence, a browser
 extension for cross-origin applications, vision-based grounding, learned (bandit) policies. See
