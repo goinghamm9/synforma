@@ -14,7 +14,7 @@ let cachedStatus: PlannerStatus | null = null;
 export async function fetchPlannerStatus(): Promise<PlannerStatus> {
   if (cachedStatus) return cachedStatus;
   try {
-    const res = await fetch("/api/planner/status", { cache: "no-store" });
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/planner/status`, { cache: "no-store" });
     if (!res.ok) throw new Error(String(res.status));
     cachedStatus = PlannerStatusSchema.parse(await res.json());
   } catch {

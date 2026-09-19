@@ -20,7 +20,7 @@ export class GeminiPlanner implements Planner {
   private readonly heuristic = new HeuristicPlanner();
   lastError: string | null = null;
 
-  constructor(private readonly endpoint = "/api/planner") {}
+  constructor(private readonly endpoint = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/planner`) {}
 
   private async call<T>(req: PlannerRequest, parse: (raw: unknown) => T): Promise<T | null> {
     try {

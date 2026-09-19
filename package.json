@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:static": "bash scripts/build-static.sh"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",

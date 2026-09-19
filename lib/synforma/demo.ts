@@ -4,11 +4,19 @@
  * Control form so the demo starts in one click.
  */
 
+/** Sub-path the app is mounted under (static hosting such as GitHub Pages); empty for a root deployment. */
+export const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/$/, "");
+
+/** Prefix an app-absolute path with the base path. */
+export function withBase(path: string): string {
+  return `${BASE_PATH}${path}`;
+}
+
 export const SANDBOX_APP = {
   name: "Meridian CRM",
-  baseUrl: "/sandbox/crm",
+  baseUrl: withBase("/sandbox/crm"),
   /** The lead record the demo starts from. Any lead works. */
-  entryUrl: "/sandbox/crm/leads/L-1001",
+  entryUrl: withBase("/sandbox/crm/leads/L-1001"),
   version: "4.2",
 };
 

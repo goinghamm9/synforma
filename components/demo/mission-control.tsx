@@ -983,6 +983,7 @@ export function MissionControl() {
     setPhase("act");
   }, [programId, setPhase]);
 
+  const discardDemonstration = trust.demonstration.discard;
   const startOver = React.useCallback(() => {
     abortRef.current?.abort();
     if (approvalResolver.current) decideApproval("denied");
@@ -998,7 +999,7 @@ export function MissionControl() {
         return { contracts: Object.fromEntries(Object.entries(st.contracts).filter(([wid]) => live.has(wid))) };
       });
     }
-    trust.demonstration.discard();
+    discardDemonstration();
     setDiscovery(INITIAL_DISCOVERY);
     setLiveGraph(null);
     setAct(INITIAL_ACT);
@@ -1012,7 +1013,7 @@ export function MissionControl() {
     const iframe = iframeRef.current;
     if (iframe) iframe.src = "about:blank";
     setCurrentUrl("");
-  }, [decideApproval]);
+  }, [decideApproval, discardDemonstration]);
 
   // ─────────────── export ───────────────
   const exportJSON = React.useCallback(() => {
