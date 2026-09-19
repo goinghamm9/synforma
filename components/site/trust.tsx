@@ -15,6 +15,10 @@ const GUARANTEES: { title: string; body: string }[] = [
     body: "Each action records who asked, what Synforma believed, what it relied on, before and after state, the approval and whether it can be undone. Git history for enterprise work.",
   },
   {
+    title: "Escalation, not guessing",
+    body: "When confidence is too low or sources conflict, Synforma does not answer. It knows who owns the policy or the permission and says so. That is a feature, not a failure.",
+  },
+  {
     title: "Identity",
     body: "Every action is bound to a verified person or a named service identity. Nothing runs as “the system”.",
   },
