@@ -17,6 +17,26 @@ npm run dev
 
 Open http://localhost:3000/demo and follow `docs/DEMO_SCRIPT.md`. Node 20 or newer.
 
+## Deploy to Netlify (2 minutes, free tier)
+
+The repository carries a `netlify.toml` (base directory `synforma`, static export to `synforma/out`).
+
+1. In Netlify choose **Add new project → Import from an existing project → GitHub** and pick
+   `goinghamm9/Experimentation`.
+2. Choose the branch (`claude/synforma-loop-website-3d-ooqg1a` until the PR is merged, then `main`).
+   Build settings are read from `netlify.toml`; leave them as detected.
+3. Deploy. The site serves everything statically; the optional planner API is not part of a static
+   export, so the heuristic planner runs (the UI says so).
+
+If a project named `synforma` already exists in your team (it does), open it → **Project configuration →
+Build & deploy → Link repository** and follow the same steps.
+
+## Deploy to GitHub Pages (one setting, then automatic)
+
+1. In the repository choose **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+2. Run the workflow **Deploy Synforma to GitHub Pages** (Actions tab → Run workflow), or ask Claude to
+   trigger it. The site appears at `https://goinghamm9.github.io/Experimentation/`.
+
 ## Deploy to Vercel (5 minutes, free tier)
 
 1. Sign in at vercel.com and choose **Add New → Project**, then import `goinghamm9/Experimentation`.
