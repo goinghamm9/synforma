@@ -87,6 +87,7 @@ export function DataSection() {
   const runs = useSynforma((s) => s.runs);
   const eventCount = useSynforma((s) => s.events.length);
   const interventionCount = useSynforma((s) => Object.keys(s.interventions).length);
+  const analysisCount = useSynforma((s) => Object.keys(s.analyses).length);
   const estimate = useStorageEstimate();
 
   const [pending, setPending] = useState<Pending>(null);
@@ -200,7 +201,7 @@ export function DataSection() {
   const quotaPct = estimate.available ? Math.min(100, (estimate.total / ASSUMED_QUOTA_BYTES) * 100) : 0;
 
   return (
-    <SettingsSection id="data" eyebrow="Data" title="Your data stays in this browser" lede="Programs, Work Graphs, runs, events, interventions, approvals and the audit log are stored in this browser's localStorage. Nothing is sent to a server; clearing site data deletes it.">
+    <SettingsSection id="data" eyebrow="Data" title="Your data stays in this browser" lede="Programs, Work Graphs, runs, events, interventions, approvals, the audit log and imported stimulus analyses are stored in this browser's localStorage. Nothing is sent to a server; clearing site data deletes it.">
       <FieldRow label="Storage in use" hint="Estimated from the size of every localStorage entry on this origin. Browsers usually allow about 5 MB.">
         {estimate.available ? (
           <div>
@@ -225,6 +226,7 @@ export function DataSection() {
             </dl>
             <StatusLine>
               {programList.length} program{programList.length === 1 ? "" : "s"} · {Object.keys(runs).length} run{Object.keys(runs).length === 1 ? "" : "s"} · {eventCount} event{eventCount === 1 ? "" : "s"} · {interventionCount} intervention{interventionCount === 1 ? "" : "s"}
+              {analysisCount ? ` · ${analysisCount} stimulus analys${analysisCount === 1 ? "is" : "es"}` : ""}
             </StatusLine>
           </div>
         ) : (
@@ -265,7 +267,7 @@ export function DataSection() {
         {importFeedback ? <StatusLine tone={importFeedback.tone}>{importFeedback.text}</StatusLine> : null}
       </FieldRow>
 
-      <FieldRow label="Programs" hint="Deleting a program removes its Work Graph, discovery, runs, events, signals, hypotheses, interventions and approvals. Audit entries are kept.">
+      <FieldRow label="Programs" hint="Deleting a program removes its Work Graph, discovery, runs, events, signals, hypotheses, interventions, approvals and any stimulus analysis linked to it. Audit entries are kept.">
         {programList.length ? (
           <ul className="divide-y divide-line rounded-lg border border-line bg-surface">
             {programList.map((p) => (
@@ -336,7 +338,7 @@ export function DataSection() {
           }
         }}
         title="Reset everything?"
-        description="All programs, runs, events, interventions, approvals, the audit log and settings will be removed from this browser."
+        description="All programs, runs, events, interventions, approvals, the audit log, imported stimulus analyses and settings will be removed from this browser."
         confirmLabel="Reset everything"
         destructive
         onConfirm={confirmReset}

@@ -2,11 +2,11 @@
 import * as React from "react";
 import { ArrowRight, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, Compass, Loader2, Play, RotateCcw, ShieldCheck, Square, Undo2, Wrench, XCircle } from "lucide-react";
 import { Badge, Button, Input, Label, Textarea } from "@/components/ui";
-import { CONTEXT_FIELDS, DEFAULT_OBJECTIVE, SANDBOX_APP } from "@/lib/synforma/demo";
 import type { Program } from "@/lib/synforma/types";
 import { cn, formatDuration } from "@/lib/utils";
 import { ChangeList, ErrorNote, LogView, ModeBadge, Note, OutcomeBadge, PanelSkeleton, TrustStopCard } from "./bits";
 import { useMissionSession } from "./session/context";
+import { TargetPicker } from "./target-picker";
 import type { ActState } from "./phases/act-panel";
 
 /**
@@ -34,13 +34,13 @@ function Stage({ n, title, done, aside, testId, children }: { n: number; title: 
 }
 
 function ConnectStage() {
-  const { ready, connection } = useMissionSession();
+  const { ready, connection, target, targets, setTarget, program } = useMissionSession();
   const { status, error, connect } = connection;
   // Connects automatically once the store is ready and nothing has been connected yet.
   React.useEffect(() => {
     if (!ready || status !== "idle") return;
-    void connect();
-  }, [ready, status, connect]);
+    void connect(target);
+  }, [ready, status, connect, target]);
   const aside =
     status === "connected" ? (
       <Badge variant="verdant" data-testid="simple-connect-status">
@@ -59,18 +59,20 @@ function ConnectStage() {
     );
   return (
     <Stage n={1} title="Connect" done={status === "connected"} aside={aside} testId="simple-connect">
+      <TargetPicker targets={targets} value={target.id} onChange={setTarget} locked={Boolean(program)} compact />
       <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-        <span className="font-medium text-ink">{SANDBOX_APP.name}</span>
-        <span className="text-slate">v{SANDBOX_APP.version}</span>
-        <span className="mono-data min-w-0 truncate text-[11px] text-slate">{SANDBOX_APP.baseUrl}</span>
+        <span className="font-medium text-ink">{target.name}</span>
+        <span className="text-slate">v{target.version}</span>
+        <span className="mono-data min-w-0 truncate text-[11px] text-slate">{target.baseUrl}</span>
       </div>
+      <p className="text-[11px] text-slate">{target.replicaNote}</p>
       <p className="text-xs leading-relaxed text-graphite">No connector, no selectors. Synforma reads the interface through the same generic semantics a screen reader uses.</p>
       {status === "error" ? (
         <ErrorNote
           title="Could not connect"
           body={error ?? "The application did not load."}
           action={
-            <Button size="sm" variant="outline" onClick={() => void connect()}>
+            <Button size="sm" variant="outline" onClick={() => void connect(target)}>
               Try again
             </Button>
           }
@@ -117,8 +119,8 @@ function ProgressLine({ program }: { program: Program | null }) {
 }
 
 function ObjectiveStage({ program }: { program: Program | null }) {
-  const { connection, discovery, context, act, synth, uiBusy } = useMissionSession();
-  const [text, setText] = React.useState(program?.objectiveText ?? DEFAULT_OBJECTIVE);
+  const { connection, discovery, context, act, synth, uiBusy, target } = useMissionSession();
+  const [text, setText] = React.useState(program?.objectiveText ?? target.objective);
   const [ctx, setCtx] = React.useState<Record<string, string>>(context);
   const [details, setDetails] = React.useState(false);
   const busy = discovery.state.status === "running" || discovery.state.status === "planning";
@@ -146,7 +148,7 @@ function ObjectiveStage({ program }: { program: Program | null }) {
           <fieldset className="mt-2 space-y-2" disabled={busy}>
             <p className="text-[11px] text-slate">Work context Synforma may use when acting on behalf of a person. Judgment fields are never guessed from these.</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {CONTEXT_FIELDS.map((f) => (
+              {target.contextFields.map((f) => (
                 <div key={f.key} className="min-w-0 space-y-1">
                   <Label htmlFor={`simple-ctx-${f.key}`} className="text-xs">
                     {f.label}
@@ -343,6 +345,31 @@ function TrustLine({ program }: { program: Program | null }) {
   );
 }
 
+/** The target's presenter lines, one per scene, for a five-minute walkthrough. Collapsed by default. */
+function PresenterNotes() {
+  const { target, act, discovery } = useMissionSession();
+  const [open, setOpen] = React.useState(false);
+  const scene = act.state.status === "running" || act.state.result ? (act.state.regroundings > 0 ? 4 : 3) : discovery.state.status === "done" ? 2 : 0;
+  return (
+    <div className="rounded-lg border border-line bg-surface" data-testid="presenter-notes" data-open={open ? "true" : "false"}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-slate hover:text-ink" aria-expanded={open} data-testid="presenter-notes-toggle">
+        <span>Presenter notes · {target.name}</span>
+        {open ? <ChevronDown className="h-3 w-3" aria-hidden="true" /> : <ChevronRight className="h-3 w-3" aria-hidden="true" />}
+      </button>
+      {open ? (
+        <ol className="space-y-1.5 border-t border-line px-3 py-2.5">
+          {target.script.map((line, i) => (
+            <li key={i} className={cn("flex gap-2 text-[12px] leading-snug", i === scene ? "text-ink" : "text-slate")} data-testid="presenter-note" data-current={i === scene ? "true" : "false"}>
+              <span className={cn("mono-data shrink-0 text-[10px]", i === scene ? "text-ink" : "text-mist")}>{i + 1}</span>
+              <span>{line}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
 export function SimpleView() {
   const { ready, program } = useMissionSession();
   if (!ready) return <PanelSkeleton />;
@@ -352,6 +379,7 @@ export function SimpleView() {
       <ObjectiveStage key={program?.id ?? "new"} program={program} />
       <RunStage program={program} />
       <TrustLine program={program} />
+      <PresenterNotes />
     </div>
   );
 }

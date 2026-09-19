@@ -12,11 +12,15 @@ interface Props {
   appName: string;
   baseUrl: string;
   version: string;
+  /** One honest sentence about the target ("Fictional replica of …"). */
+  replicaNote: string;
+  /** The target picker, rendered above the application card. */
+  picker?: React.ReactNode;
   onConnect: () => void;
   onContinue: () => void;
 }
 
-export function ConnectPanel({ status, info, error, appName, baseUrl, version, onConnect, onContinue }: Props) {
+export function ConnectPanel({ status, info, error, appName, baseUrl, version, replicaNote, picker, onConnect, onContinue }: Props) {
   const connecting = status === "connecting";
   return (
     <div className="space-y-5 p-5">
@@ -26,13 +30,15 @@ export function ConnectPanel({ status, info, error, appName, baseUrl, version, o
         description="No connector, no selectors, no training data about this app. Synforma reads the interface through the same generic semantics a screen reader uses."
       />
 
+      {picker}
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
             <CardTitle>{appName}</CardTitle>
             <Badge variant="outline">v{version}</Badge>
           </div>
-          <CardDescription>Fictional enterprise CRM bundled with this prototype. It contains no Synforma hooks, ids or data attributes.</CardDescription>
+          <CardDescription>{replicaNote} It contains no Synforma hooks, ids or data attributes.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <KeyValue

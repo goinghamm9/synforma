@@ -6,7 +6,7 @@ import { useSynforma } from "@/lib/synforma/store";
 import { MINIMUM_RUNS } from "@/lib/synforma/engine/metrics";
 import { fetchPlannerStatus, plannerVendor, resolvePlannerKind } from "@/lib/synforma/planner";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
-import { DEFAULT_CONTEXT, SANDBOX_APP } from "@/lib/synforma/demo";
+import { contextFor, DEMO_TARGETS, targetById, targetForProgram, TARGET_APPS, type TargetApp } from "@/lib/synforma/targets";
 import type { AuditEntry, Hypothesis, Intervention, LedgerEntry, PlannerKind, Program, Run, RunEvent, SynformaSettings, WorkGraph } from "@/lib/synforma/types";
 import { PHASE_INDEX, type PhaseId, type UiVariant } from "../types";
 import { clearPrefs, readPrefs, readSandboxUiVariant, writePrefs } from "../demo-prefs";
@@ -15,6 +15,7 @@ import { useConnection, type ConnectionApi } from "./use-connection";
 import { useDiscovery, type DiscoveryApi } from "./use-discovery";
 import { useActRun, type ActRunApi } from "./use-act-run";
 import { useSyntheticRuns, type SyntheticRunsApi } from "./use-synthetic-runs";
+import { useRecording, type RecordingApi } from "./use-recording";
 import { defaultPhaseFor, errorMessage, maxPhaseIndex, patchProgram, plannerLabelFor } from "./helpers";
 
 export type DemoView = SynformaSettings["demoView"];
@@ -46,6 +47,8 @@ export interface MissionSession {
   act: ActRunApi;
   synth: SyntheticRunsApi;
   trust: TrustLayerApi;
+  /** Screen recording of a run for a stimulus analysis (research); offered in the advanced Act panel only, never started by itself. */
+  recording: RecordingApi;
   /** Provenance + rollback ledger entries for this program's agent runs. */
   programLedger: LedgerEntry[];
   /** The trust layer's demonstration recorder, with `start` clearing the agent overlays first. */
@@ -81,6 +84,11 @@ export interface MissionSession {
   busyLabel: string | null;
   demoView: DemoView;
   setDemoView: (view: DemoView) => void;
+  /** The application this session targets: the program's own when one exists, else the chosen one. */
+  target: TargetApp;
+  targets: readonly TargetApp[];
+  /** Choose the target for the next program; ignored while a program exists (Start over first). */
+  setTarget: (id: string) => void;
 }
 
 export function useMissionSession(): MissionSession {
@@ -114,9 +122,10 @@ export function useMissionSession(): MissionSession {
   const [phase, setPhaseState] = React.useState<PhaseId>("connect");
   const [phaseReady, setPhaseReady] = React.useState(false);
   const [plannerStatus, setPlannerStatus] = React.useState<PlannerStatus | null>(null);
-  const [context, setContext] = React.useState<Record<string, string>>(DEFAULT_CONTEXT);
+  const target = React.useMemo(() => (program ? targetForProgram(program) : targetById(settings.demoTarget)), [program, settings.demoTarget]);
+  const [context, setContext] = React.useState<Record<string, string>>(() => contextFor(target));
   /** The sandbox's UI version as stored right now ("v1" on the server, where nothing reads it). */
-  const [uiVariant, setUiVariant] = React.useState<UiVariant>(() => readSandboxUiVariant());
+  const [uiVariant, setUiVariant] = React.useState<UiVariant>(() => readSandboxUiVariant(target.uiVersionKey));
   const [uiBusy, setUiBusy] = React.useState(false);
   const [drawerRun, setDrawerRun] = React.useState<Run | null>(null);
   const [confirmReset, setConfirmReset] = React.useState(false);
@@ -134,9 +143,10 @@ export function useMissionSession(): MissionSession {
     if (pid) writePrefs(pid, { phase: id });
   }, []);
 
-  const discovery = useDiscovery({ connection, programId, plannerStatus, setPhase, setContext });
-  const act = useActRun({ connection, programId, context, applyRegroundings, setUiVariant });
+  const discovery = useDiscovery({ connection, programId, plannerStatus, setPhase, setContext, target });
+  const act = useActRun({ connection, programId, context, applyRegroundings, setUiVariant, target });
   const synth = useSyntheticRuns({ connection, programId, context });
+  const recording = useRecording({ programId, currentRunId: act.state.runId });
 
   const connected = connection.connected;
   const plannerKind: PlannerKind | null = program ? program.planner : plannerStatus ? resolvePlannerKind(settings.plannerPreference, plannerStatus) : null;
@@ -163,12 +173,21 @@ export function useMissionSession(): MissionSession {
     if (p) {
       // The work context lives on the Program; prefs.context is the pre-migration location and only a fallback.
       const prefs = readPrefs(p.id);
+      const t = targetForProgram(p);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time restore after store hydration
-      setContext({ ...DEFAULT_CONTEXT, ...(prefs.context ?? {}), ...(p.context ?? {}) });
+      setContext({ ...contextFor(t), ...(prefs.context ?? {}), ...(p.context ?? {}) });
+      setUiVariant(readSandboxUiVariant(t.uiVersionKey));
       const max = maxPhaseIndex(p, true);
       const wanted = prefs.phase && PHASE_INDEX[prefs.phase] <= max ? prefs.phase : defaultPhaseFor(p);
       setPhaseState(wanted);
-      void connect(true);
+      void connect(t, true);
+    } else {
+      // A link such as /demo?target=billing picks the application for the next program.
+      const wanted = new URLSearchParams(window.location.search).get("target");
+      if (wanted && TARGET_APPS.some((t) => t.id === wanted) && wanted !== s.settings.demoTarget) {
+        s.setSettings({ demoTarget: wanted });
+        setContext(contextFor(targetById(wanted)));
+      }
     }
     setPhaseReady(true);
   }, [hydrated, phaseReady, connect]);
@@ -242,16 +261,28 @@ export function useMissionSession(): MissionSession {
       if (!driver) return;
       setUiBusy(true);
       try {
-        await driver.goto(`${SANDBOX_APP.baseUrl}/settings?ui=${v}`);
+        await driver.goto(`${target.baseUrl}/settings?ui=${v}`);
         setUiVariant(v);
-        useSynforma.getState().addAudit({ actor: "admin", action: "Simulated vendor UI update", target: SANDBOX_APP.name, detail: `UI ${v}${v === "v2" ? " — labels, menus, tabs and DOM ids changed" : " — original release"}`, programId: programId ?? undefined });
+        useSynforma.getState().addAudit({ actor: "admin", action: "Simulated vendor UI update", target: target.name, detail: `UI ${v}${v === "v2" ? " — labels, menus, tabs and DOM ids changed" : " — original release"}`, programId: programId ?? undefined });
       } catch (e) {
         toast.error(`Could not switch the UI: ${errorMessage(e)}`);
       } finally {
         setUiBusy(false);
       }
     },
-    [getDriver, programId],
+    [getDriver, programId, target],
+  );
+
+  const setTarget = React.useCallback(
+    (id: string) => {
+      if (useSynforma.getState().activeProgramId) return;
+      const t = targetById(id);
+      useSynforma.getState().setSettings({ demoTarget: t.id });
+      setContext(contextFor(t));
+      setUiVariant(readSandboxUiVariant(t.uiVersionKey));
+      void connect(t);
+    },
+    [connect],
   );
 
   // ─────────────── program lifecycle ───────────────
@@ -290,7 +321,7 @@ export function useMissionSession(): MissionSession {
     resetDiscovery();
     resetAct();
     resetSynth();
-    setContext(DEFAULT_CONTEXT);
+    setContext(contextFor(targetById(useSynforma.getState().settings.demoTarget)));
     resetConnection();
     setPhaseState("connect");
     setConfirmReset(false);
@@ -381,6 +412,7 @@ export function useMissionSession(): MissionSession {
     act,
     synth,
     trust,
+    recording,
     programLedger,
     demonstration,
     context,
@@ -406,6 +438,9 @@ export function useMissionSession(): MissionSession {
     copyJSON,
     busyLabel,
     demoView: settings.demoView,
+    target,
+    targets: DEMO_TARGETS,
+    setTarget,
     setDemoView,
   };
 }

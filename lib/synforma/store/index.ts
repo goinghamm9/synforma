@@ -19,6 +19,7 @@ import type {
 } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 import type { DiscoveredState } from "../engine/explorer";
+import type { StimulusAnalysis } from "../analysis/stimulus";
 import { shortId } from "@/lib/utils";
 
 /**
@@ -48,6 +49,11 @@ export interface SynformaState {
   ledger: LedgerEntry[];
   /** Autonomy Contracts keyed by workflow id. */
   contracts: Record<string, AutonomyContract>;
+  /**
+   * Imported stimulus analyses keyed by id: the predicted cortical response of an average
+   * subject to recorded screen content (a property of the screens, never a measurement of a person).
+   */
+  analyses: Record<string, StimulusAnalysis>;
   settings: SynformaSettings;
   activeProgramId: string | null;
 
@@ -56,6 +62,8 @@ export interface SynformaState {
   addLedger: (entry: LedgerEntry) => void;
   updateLedger: (id: string, patch: Partial<LedgerEntry>) => void;
   setContract: (c: AutonomyContract) => void;
+  addAnalysis: (a: StimulusAnalysis) => void;
+  removeAnalysis: (id: string) => void;
   upsertProgram: (p: Program) => void;
   setActiveProgram: (id: string | null) => void;
   saveGraph: (g: WorkGraph) => void;
@@ -91,6 +99,7 @@ const empty = () => ({
   claims: {} as Record<string, Claim[]>,
   ledger: [] as LedgerEntry[],
   contracts: {} as Record<string, AutonomyContract>,
+  analyses: {} as Record<string, StimulusAnalysis>,
   settings: DEFAULT_SETTINGS,
   activeProgramId: null as string | null,
 });
@@ -104,6 +113,13 @@ export const useSynforma = create<SynformaState>()(
       addLedger: (entry) => set((s) => ({ ledger: [...s.ledger.slice(-2999), entry] })),
       updateLedger: (id, patch) => set((s) => ({ ledger: s.ledger.map((e) => (e.id === id ? { ...e, ...patch } : e)) })),
       setContract: (c) => set((s) => ({ contracts: { ...s.contracts, [c.workflowId]: c } })),
+      addAnalysis: (a) => set((s) => ({ analyses: { ...s.analyses, [a.id]: a } })),
+      removeAnalysis: (id) =>
+        set((s) => {
+          const analyses = { ...s.analyses };
+          delete analyses[id];
+          return { analyses };
+        }),
       upsertProgram: (p) => set((s) => ({ programs: { ...s.programs, [p.id]: { ...p, updatedAt: Date.now() } } })),
       setActiveProgram: (id) => set({ activeProgramId: id }),
       saveGraph: (g) => set((s) => ({ graphs: { ...s.graphs, [g.id]: { ...g, nodes: g.nodes.map((n) => ({ ...n })), edges: g.edges.map((e) => ({ ...e })) } } })),
@@ -155,13 +171,15 @@ export const useSynforma = create<SynformaState>()(
           delete claims[id];
           const ledger = s.ledger.filter((e) => e.programId !== id);
           const contracts = program?.workflow ? Object.fromEntries(Object.entries(s.contracts).filter(([wid]) => wid !== program.workflow!.id)) : s.contracts;
-          return { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, approvals, proficiency, claims, ledger, contracts, activeProgramId: s.activeProgramId === id ? null : s.activeProgramId };
+          // Stimulus analyses linked to this program or to one of its runs go with it; unlinked imports stay.
+          const analyses = Object.fromEntries(Object.entries(s.analyses).filter(([, a]) => a.programId !== id && !(a.runId && runIds.has(a.runId))));
+          return { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, approvals, proficiency, claims, ledger, contracts, analyses, activeProgramId: s.activeProgramId === id ? null : s.activeProgramId };
         }),
       resetAll: () => set(empty()),
       exportJSON: () => {
         const s = get();
-        const { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, claims, ledger, contracts, settings } = s;
-        return JSON.stringify({ exportedAt: new Date().toISOString(), programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, claims, ledger, contracts, settings }, null, 2);
+        const { programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, claims, ledger, contracts, analyses, settings } = s;
+        return JSON.stringify({ exportedAt: new Date().toISOString(), programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, claims, ledger, contracts, analyses, settings }, null, 2);
       },
       importJSON: (json) => {
         try {
@@ -192,6 +210,7 @@ export const useSynforma = create<SynformaState>()(
         claims: s.claims,
         ledger: s.ledger,
         contracts: s.contracts,
+        analyses: s.analyses,
         settings: s.settings,
         activeProgramId: s.activeProgramId,
       }),

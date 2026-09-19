@@ -1,12 +1,13 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, Check, CheckCircle2, Circle, ExternalLink, GitCompareArrows, Loader2, Play, RotateCcw, ShieldCheck, Square, Wrench, XCircle } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Circle, ExternalLink, GitCompareArrows, Loader2, Play, RotateCcw, ShieldCheck, Square, Video, Wrench, XCircle } from "lucide-react";
 import { Badge, Button, Label, Switch, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { LedgerTable } from "@/components/trust";
 import { cn, formatDuration } from "@/lib/utils";
 import type { LedgerEntry, Program, Run } from "@/lib/synforma/types";
 import type { RunnerResult } from "@/lib/synforma/engine/runner";
 import type { ChangeRecord, LogLine, TrustStop, UiVariant } from "../types";
+import type { RecordingApi } from "../session/use-recording";
 import { ChangeList, ErrorNote, LogView, Note, OutcomeBadge, PanelHeader, Stat, TrustStopCard } from "../bits";
 
 export type { TrustStop };
@@ -41,6 +42,8 @@ interface Props {
   /** Provenance + rollback ledger entries for this program's agent runs. */
   ledger: LedgerEntry[];
   undoing: boolean;
+  /** Screen recording for a stimulus analysis (research). Started only from its button here. */
+  recording: RecordingApi;
   onRun: () => void;
   onStop: () => void;
   onToggleUi: (v: UiVariant) => void;
@@ -52,6 +55,75 @@ interface Props {
 
 const DRIFT_TOOLTIP =
   "Configuration-drift detection, in seed form: every time a planned control no longer exists and is re-resolved by meaning, Synforma records a UI change event (screen, affected step, risk). Each change was re-verified by executing the workflow on the changed interface.";
+
+const RECORDING_NOTE = "The recording stays on your computer. Use it with the TRIBE bridge for a stimulus analysis (research).";
+
+function pad2(n: number): string {
+  return n.toString().padStart(2, "0");
+}
+
+/** Elapsed time since `startedAt`, ticking once a second. */
+function RecordingClock({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const s = Math.max(0, Math.floor((now - startedAt) / 1000));
+  return (
+    <span className="mono-data">
+      {Math.floor(s / 60)}:{pad2(s % 60)}
+    </span>
+  );
+}
+
+/**
+ * Record the screen for a stimulus analysis (research): the person chooses what to share in the
+ * browser's own dialog; stopping downloads the video and the run's step windows. Nothing starts by itself.
+ */
+function RecordScreen({ recording }: { recording: RecordingApi }) {
+  const { unavailableReason, status, startedAt, error, start, stop } = recording;
+  const recordingNow = status === "recording";
+  const saving = status === "saving";
+  return (
+    <div className="rounded-lg border border-line bg-surface p-3" data-testid="record-screen-card">
+      <div className="flex flex-wrap items-center gap-2">
+        {unavailableReason ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex" tabIndex={0} data-testid="record-screen-wrap">
+                <Button variant="outline" size="sm" disabled data-testid="record-screen" data-unavailable-reason={unavailableReason} aria-disabled="true">
+                  <Video aria-hidden="true" />
+                  Record screen
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top">{unavailableReason}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Button variant={recordingNow ? "signal" : "outline"} size="sm" onClick={recordingNow ? stop : () => void start()} disabled={saving} data-testid="record-screen" data-recording={recordingNow}>
+            {recordingNow ? <Square aria-hidden="true" /> : saving ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Video aria-hidden="true" />}
+            {recordingNow ? "Stop recording" : saving ? "Saving…" : "Record screen"}
+          </Button>
+        )}
+        {recordingNow && startedAt ? (
+          <span role="status" className="inline-flex items-center gap-1.5 text-xs text-signal" data-testid="recording-indicator">
+            <span className="h-2 w-2 rounded-full bg-signal motion-safe:animate-pulse" aria-hidden="true" />
+            Recording · <RecordingClock startedAt={startedAt} />
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-1.5 text-xs leading-relaxed text-graphite" data-testid="record-screen-note">
+        {RECORDING_NOTE}
+      </p>
+      {error ? (
+        <p role="alert" className="mt-1 text-xs text-signal">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 function ChangesCounter({ count }: { count: number }) {
   return (
@@ -71,7 +143,7 @@ function ChangesCounter({ count }: { count: number }) {
   );
 }
 
-export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requireApproval, agentRuns, ledger, undoing, onRun, onStop, onToggleUi, onOpenOutcome, onUndo, onReviewEvidence }: Props) {
+export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requireApproval, agentRuns, ledger, undoing, recording, onRun, onStop, onToggleUi, onOpenOutcome, onUndo, onReviewEvidence }: Props) {
   const workflow = program.workflow;
   const parsed = program.parsed;
   const running = state.status === "running";
@@ -117,6 +189,8 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
           {requireApproval ? "Approval required before commit" : "Approval gate disabled in settings"}
         </span>
       </div>
+
+      <RecordScreen recording={recording} />
 
       <div className="rounded-lg border border-line bg-surface p-3">
         <div className="flex items-start justify-between gap-3">

@@ -5,7 +5,7 @@ import { HumanObserver, type ChecklistItem } from "@/lib/synforma/engine/observe
 import { assignCohort } from "@/lib/synforma/engine/adoption";
 import { fetchPlannerStatus, resolvePlannerKind } from "@/lib/synforma/planner";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
-import { DEFAULT_CONTEXT } from "@/lib/synforma/demo";
+import { contextFor, targetForProgram } from "@/lib/synforma/targets";
 import { useSynforma } from "@/lib/synforma/store";
 import type { AssistancePreference, FrictionInference, KeyboardWindow, PageModel, PlannerKind, PointerWindow, Program, Run } from "@/lib/synforma/types";
 import { shortId } from "@/lib/utils";
@@ -61,7 +61,7 @@ function readUiVariant(driver: IframeDriver): string {
 export function useGuideRun(program: Program, iframeRef: RefObject<HTMLIFrameElement | null>): GuideRunApi {
   const workflow = program.workflow!;
   const requirements = useMemo(() => program.parsed?.requirements ?? [], [program.parsed]);
-  const context = useMemo(() => ({ ...DEFAULT_CONTEXT, ...((program as Program & { context?: Record<string, string> }).context ?? {}) }), [program]);
+  const context = useMemo(() => ({ ...contextFor(targetForProgram(program)), ...((program as Program & { context?: Record<string, string> }).context ?? {}) }), [program]);
   const startUrl = workflow.startUrl || context.entryUrl || program.application.baseUrl;
   const settings = useSynforma((s) => s.settings);
 

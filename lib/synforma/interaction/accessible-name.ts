@@ -42,11 +42,21 @@ export function isFormControl(el: Element): boolean {
   return tag === "input" || tag === "select" || tag === "textarea";
 }
 
+/** Elements a `<label for>` may name (HTML "labelable" elements): a Radix switch is a <button role="switch"> with an id. */
+const LABELABLE = new Set(["button", "input", "meter", "output", "progress", "select", "textarea"]);
+
 export function accessibleName(el: Element, doc: Document): string {
   const byLabelledBy = labelledBy(el, doc);
   if (byLabelledBy) return byLabelledBy;
   const ariaLabel = collapse(el.getAttribute("aria-label"));
   if (ariaLabel) return ariaLabel;
+
+  // Host-language label association comes before name from content: <label for> names buttons and switches too.
+  if (el.id && LABELABLE.has(el.tagName.toLowerCase()) && !isFormControl(el)) {
+    const label = doc.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+    const t = textOf(label);
+    if (t) return t;
+  }
 
   if (isFormControl(el)) {
     const input = el as HTMLInputElement;

@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowUpRight, CircleDashed, Play, Search, Square, X } from "lucide-react";
+import { ArrowUpRight, CircleDashed, Layers, Play, Search, Square, X } from "lucide-react";
 import type { GraphNode, NodeType, Program, WorkGraph } from "@/lib/synforma/types";
 import { useSynforma } from "@/lib/synforma/store";
 import { Button } from "@/components/ui/button";
@@ -11,25 +11,66 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { TYPE_LABEL, TYPE_ORDER } from "./constants";
-import { computeIntentPath, type IntentHop } from "./intent-path";
+import { computeIntentPath } from "./intent-path";
 import { NodeDetail, NodeDetailEmpty } from "./node-detail";
 import { SAMPLE_GRAPH } from "./sample-graph";
+import { layoutProcessMap } from "./map/layout";
+import { LENSES, applyLayers, augmentGraph, buildProcessMap, typeCounts, type Lens } from "./map/model";
+import { ProcessMap, type FocusRequest } from "./map/process-map";
 
 const WorkGraph3D = dynamic(() => import("./work-graph-3d").then((m) => m.WorkGraph3D), {
   ssr: false,
-  loading: () => <GraphLoading />,
+  loading: () => <GraphLoading label="Preparing the 3D view" />,
 });
 
 const HOP_MS = 1400;
 const SEARCH_HIGHLIGHT_CAP = 12;
 const EMPTY_GRAPH: WorkGraph = { id: "none", nodes: [], edges: [], version: 0, updatedAt: 0 };
+const VIEW_KEY = "synforma-graph-view";
 
-function GraphLoading() {
+type View = "map" | "3d";
+const VIEWS: readonly { value: View; label: string; hint: string }[] = [
+  { value: "map", label: "Map", hint: "2D process map: layered left to right" },
+  { value: "3d", label: "3D", hint: "The force-directed 3D scene" },
+];
+
+// ── View preference: localStorage with an in-memory fallback, read through useSyncExternalStore ──
+let memoryView: View | null = null;
+const viewListeners = new Set<() => void>();
+function readView(): View {
+  try {
+    const v = window.localStorage.getItem(VIEW_KEY);
+    if (v === "3d" || v === "map") return v;
+  } catch {
+    /* storage unavailable */
+  }
+  return memoryView ?? "map";
+}
+function writeView(v: View) {
+  memoryView = v;
+  try {
+    window.localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    /* storage unavailable */
+  }
+  for (const l of viewListeners) l();
+}
+function subscribeView(cb: () => void) {
+  viewListeners.add(cb);
+  return () => {
+    viewListeners.delete(cb);
+  };
+}
+function useView(): View {
+  return React.useSyncExternalStore(subscribeView, readView, () => "map");
+}
+
+function GraphLoading({ label }: { label: string }) {
   return (
     <div className="dot-paper flex h-full w-full items-center justify-center" data-testid="work-graph-loading">
       <div className="flex items-center gap-3 rounded-md border border-line bg-surface px-4 py-2 text-xs text-slate">
         <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-ink" />
-        Preparing the 3D view
+        {label}
       </div>
     </div>
   );
@@ -60,6 +101,36 @@ function useMediaQuery(query: string): boolean {
   );
 }
 
+interface SegmentedProps<T extends string> {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string; hint?: string }[];
+  onChange: (v: T) => void;
+  testId: string;
+  attr: Record<string, string>;
+}
+
+function Segmented<T extends string>({ label, value, options, onChange, testId, attr }: SegmentedProps<T>) {
+  return (
+    <div role="radiogroup" aria-label={label} data-testid={testId} {...attr} className="inline-flex shrink-0 items-center rounded-md border border-line-strong bg-surface p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          title={o.hint}
+          onClick={() => onChange(o.value)}
+          data-testid={`${testId}-${o.value}`}
+          className={cn("h-6 rounded px-2 text-[11px] transition-colors cursor-pointer", value === o.value ? "bg-ink text-paper" : "text-graphite hover:bg-surface-2")}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface FlowState {
   index: number;
   playing: boolean;
@@ -70,6 +141,9 @@ export function GraphWorkbench() {
   const programs = useSynforma((s) => s.programs);
   const graphs = useSynforma((s) => s.graphs);
   const activeProgramId = useSynforma((s) => s.activeProgramId);
+  const runsById = useSynforma((s) => s.runs);
+  const events = useSynforma((s) => s.events);
+  const claimsById = useSynforma((s) => s.claims);
 
   const program: Program | null = React.useMemo(() => {
     if (activeProgramId && programs[activeProgramId]) return programs[activeProgramId];
@@ -80,13 +154,23 @@ export function GraphWorkbench() {
   const storedGraph = program ? graphs[program.graphId] ?? null : null;
   const isSample = hydrated && !program;
   const graph: WorkGraph = !hydrated ? EMPTY_GRAPH : program ? storedGraph ?? EMPTY_GRAPH : SAMPLE_GRAPH;
+  /** The graph plus the objective and outcome the program states (a discovered graph holds neither). */
+  const viewGraph = React.useMemo(() => augmentGraph(graph, program), [graph, program]);
+  const runs = React.useMemo(() => Object.values(runsById), [runsById]);
+  const claims = program ? claimsById[program.id] : undefined;
 
-  const nodeById = React.useMemo(() => new Map(graph.nodes.map((n) => [n.id, n] as const)), [graph.nodes]);
+  const nodeById = React.useMemo(() => new Map(viewGraph.nodes.map((n) => [n.id, n] as const)), [viewGraph.nodes]);
   const counts = React.useMemo(() => {
     const c: Partial<Record<NodeType, number>> = {};
     for (const n of graph.nodes) c[n.type] = (c[n.type] ?? 0) + 1;
     return c;
   }, [graph.nodes]);
+
+  // ── View and lens ──
+  const view = useView();
+  const [lens, setLens] = React.useState<Lens>("workflow");
+  const [showAllScreens, setShowAllScreens] = React.useState(false);
+  const isLarge = useMediaQuery("(min-width: 1024px)");
 
   // ── Layers ──
   const [hiddenTypes, setHiddenTypes] = React.useState<Set<NodeType>>(() => new Set());
@@ -99,38 +183,71 @@ export function GraphWorkbench() {
       return next;
     });
 
-  // ── Selection ──
+  // ── The process map model and layout ──
+  const fullModel = React.useMemo(
+    () => buildProcessMap({ graph: viewGraph, program, runs, events, claims, lens, showAllScreens, sample: isSample }),
+    [viewGraph, program, runs, events, claims, lens, showAllScreens, isSample],
+  );
+  const mapCounts = React.useMemo(() => typeCounts(fullModel), [fullModel]);
+  const model = React.useMemo(() => applyLayers(fullModel, hiddenTypes), [fullModel, hiddenTypes]);
+  const layout = React.useMemo(() => layoutProcessMap(model), [model]);
+  /** Screen that contains a node not drawn on the map (an action or a field), for panning. */
+  const screenOf = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of viewGraph.edges) {
+      if (e.type !== "contains") continue;
+      if (nodeById.get(e.from)?.type === "screen") m.set(e.to, e.from);
+    }
+    for (const n of viewGraph.nodes) {
+      const s = n.data?.screen;
+      if (typeof s === "string" && !m.has(n.id) && nodeById.has(s)) m.set(n.id, s);
+    }
+    return m;
+  }, [viewGraph, nodeById]);
+
+  // ── Selection and focus ──
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const selectedNode: GraphNode | null = selectedId ? nodeById.get(selectedId) ?? null : null;
+  const focusSeq = React.useRef(0);
+  const [focus, setFocus] = React.useState<FocusRequest | null>(null);
+  /** Ask the map to pan to a node (or, for an action or field, to the screen that contains it). */
+  const requestFocus = React.useCallback((id: string) => {
+    focusSeq.current += 1;
+    setFocus({ id, nonce: focusSeq.current });
+  }, []);
 
   // ── Intent flow ──
-  const path = React.useMemo(() => computeIntentPath(graph), [graph]);
+  const path = React.useMemo(() => computeIntentPath(viewGraph), [viewGraph]);
   const [flow, setFlow] = React.useState<FlowState | null>(null);
   const [flowGraphId, setFlowGraphId] = React.useState<string | null>(null);
-  if (flow && flowGraphId !== graph.id) {
+  if (flow && flowGraphId !== viewGraph.id) {
     // The graph changed underneath the flow: drop it.
     setFlow(null);
-    setFlowGraphId(graph.id);
+    setFlowGraphId(viewGraph.id);
   }
+  // Each hop selects its node and pans the map to it.
   React.useEffect(() => {
     if (!flow?.playing) return;
     const id = window.setTimeout(() => {
-      setFlow((f) => {
-        if (!f || !f.playing) return f;
-        const next = f.index + 1;
-        if (next >= path.length) return { index: f.index, playing: false };
-        setSelectedId(path[next].nodeId);
-        return { index: next, playing: true };
-      });
+      const next = flow.index + 1;
+      if (next >= path.length) {
+        setFlow({ index: flow.index, playing: false });
+        return;
+      }
+      setFlow({ index: next, playing: true });
+      setSelectedId(path[next].nodeId);
+      requestFocus(path[next].nodeId);
     }, HOP_MS);
     return () => window.clearTimeout(id);
-  }, [flow, path]);
+  }, [flow, path, requestFocus]);
 
   const startFlow = () => {
     if (path.length < 2) return;
-    setFlowGraphId(graph.id);
+    if (lens === "application") setLens("workflow");
+    setFlowGraphId(viewGraph.id);
     setFlow({ index: 0, playing: true });
     setSelectedId(path[0].nodeId);
+    requestFocus(path[0].nodeId);
   };
   const stopFlow = () => setFlow((f) => (f ? { ...f, playing: false } : f));
   const clearFlow = () => setFlow(null);
@@ -144,17 +261,17 @@ export function GraphWorkbench() {
     }
     return ids;
   }, [flow, path]);
-  const currentHop: IntentHop | null = flow ? path[flow.index] ?? null : null;
+  const currentHop = flow ? path[flow.index] ?? null : null;
 
   // ── Search ──
   const [query, setQuery] = React.useState("");
   const [searchOpen, setSearchOpen] = React.useState(false);
   const q = query.trim().toLowerCase();
-  const matches = React.useMemo(() => (q ? graph.nodes.filter((n) => n.label.toLowerCase().includes(q) || n.type === q) : []), [graph.nodes, q]);
+  const matches = React.useMemo(() => (q ? viewGraph.nodes.filter((n) => n.label.toLowerCase().includes(q) || n.type === q) : []), [viewGraph.nodes, q]);
   const searchHighlight = React.useMemo(() => (q && matches.length <= SEARCH_HIGHLIGHT_CAP ? matches.map((n) => n.id) : []), [q, matches]);
 
   // ── Provenance filter: highlight what the planner inferred rather than observed ──
-  const inferredIds = React.useMemo(() => graph.nodes.filter((n) => n.provenance?.trust === "MODEL_INFERRED").map((n) => n.id), [graph.nodes]);
+  const inferredIds = React.useMemo(() => viewGraph.nodes.filter((n) => n.provenance?.trust === "MODEL_INFERRED").map((n) => n.id), [viewGraph.nodes]);
   const [inferredOnly, setInferredOnly] = React.useState(false);
   const inferredActive = inferredOnly && inferredIds.length > 0;
 
@@ -164,16 +281,23 @@ export function GraphWorkbench() {
     setSelectedId(node?.id ?? null);
     setFlow((f) => (f?.playing ? { ...f, playing: false } : f));
   }, []);
-  const selectFromPanel = React.useCallback((id: string) => {
-    setSelectedId(id);
-    setFlow((f) => (f?.playing ? { ...f, playing: false } : f));
-  }, []);
+  const selectFromPanel = React.useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      setFlow((f) => (f?.playing ? { ...f, playing: false } : f));
+      requestFocus(id);
+    },
+    [requestFocus],
+  );
 
-  const isLarge = useMediaQuery("(min-width: 1024px)");
   const title = !hydrated ? "" : program ? program.title : "Illustrative sample";
+  const layerTypes = view === "map" ? TYPE_ORDER.filter((t) => (mapCounts[t] ?? 0) > 0) : TYPE_ORDER.filter((t) => (counts[t] ?? 0) > 0);
+  const layerCounts = view === "map" ? mapCounts : counts;
+  const workflowFamily = lens !== "application";
+  const selectedStats = lens === "runs" && selectedId ? model.nodes.find((n) => n.id === selectedId)?.runs : undefined;
 
   return (
-    <div className="flex h-[calc(100dvh-3rem)] min-h-[560px] flex-col" data-testid="graph-page">
+    <div className="flex h-[calc(100dvh-3rem)] min-h-[560px] flex-col" data-testid="graph-page" data-view={view} data-lens={lens}>
       <header className="border-b border-line bg-paper px-4 py-2.5 sm:px-6">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <div className="min-w-0">
@@ -238,6 +362,7 @@ export function GraphWorkbench() {
                               setSearchOpen(false);
                             }}
                             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-2 cursor-pointer"
+                            data-testid="graph-search-result"
                           >
                             <span className="eyebrow w-20 shrink-0 truncate text-[9px]">{TYPE_LABEL[n.type].one}</span>
                             <span className="min-w-0 flex-1 truncate text-ink">{n.label}</span>
@@ -274,32 +399,59 @@ export function GraphWorkbench() {
             )}
           </div>
         </div>
-        <div className="mt-2 flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-thin" role="group" aria-label="Layers" data-testid="graph-layer-toggles">
-          {TYPE_ORDER.filter((t) => (counts[t] ?? 0) > 0).map((t) => {
-            const on = !hiddenTypes.has(t);
-            return (
-              <button
-                key={t}
-                type="button"
-                aria-pressed={on}
-                onClick={() => toggleType(t)}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors cursor-pointer",
-                  on ? "border-line-strong bg-surface text-ink hover:bg-surface-2" : "border-transparent bg-transparent text-mist hover:text-graphite",
-                )}
-              >
-                <span className={cn("inline-block h-1.5 w-1.5 rounded-full", on ? "bg-ink" : "border border-line-strong")} aria-hidden="true" />
-                {TYPE_LABEL[t].many}
-                <span className="mono-data text-[10px] text-slate">{counts[t]}</span>
-              </button>
-            );
-          })}
-          {hiddenTypes.size ? (
-            <button type="button" onClick={() => setHiddenTypes(new Set())} className="ml-1 shrink-0 text-[11px] text-slate underline-offset-2 hover:text-ink hover:underline cursor-pointer">
-              Show all
-            </button>
+        <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-thin" data-testid="graph-toolbar">
+          <Segmented label="View" value={view} options={VIEWS} onChange={writeView} testId="graph-view-toggle" attr={{ "data-view": view }} />
+          {view === "map" ? (
+            <>
+              <Segmented label="Lens" value={lens} options={LENSES} onChange={setLens} testId="graph-lens" attr={{ "data-lens": lens }} />
+              {workflowFamily ? (
+                <button
+                  type="button"
+                  aria-pressed={showAllScreens}
+                  onClick={() => setShowAllScreens((v) => !v)}
+                  title={fullModel.hiddenScreens || showAllScreens ? "Show every discovered screen, not only the ones the workflow touches" : "Every discovered screen is already on the map"}
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors cursor-pointer",
+                    showAllScreens ? "border-ink bg-ink text-paper" : "border-line-strong bg-surface text-ink hover:bg-surface-2",
+                  )}
+                  data-testid="graph-show-all"
+                >
+                  <Layers className="h-3 w-3" aria-hidden="true" />
+                  Show all screens
+                  {fullModel.hiddenScreens ? <span className={cn("mono-data text-[10px]", showAllScreens ? "text-mist" : "text-slate")}>+{fullModel.hiddenScreens}</span> : null}
+                </button>
+              ) : null}
+            </>
           ) : null}
-          <span className="mx-1.5 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
+          <span className="mx-1 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
+          <div className="flex items-center gap-1" role="group" aria-label="Layers" data-testid="graph-layer-toggles">
+            {layerTypes.map((t) => {
+              const on = !hiddenTypes.has(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleType(t)}
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors cursor-pointer",
+                    on ? "border-line-strong bg-surface text-ink hover:bg-surface-2" : "border-transparent bg-transparent text-mist hover:text-graphite",
+                  )}
+                  data-testid={`graph-layer-${t}`}
+                >
+                  <span className={cn("inline-block h-1.5 w-1.5 rounded-full", on ? "bg-ink" : "border border-line-strong")} aria-hidden="true" />
+                  {TYPE_LABEL[t].many}
+                  <span className="mono-data text-[10px] text-slate">{layerCounts[t]}</span>
+                </button>
+              );
+            })}
+            {hiddenTypes.size ? (
+              <button type="button" onClick={() => setHiddenTypes(new Set())} className="ml-1 shrink-0 text-[11px] text-slate underline-offset-2 hover:text-ink hover:underline cursor-pointer">
+                Show all
+              </button>
+            ) : null}
+          </div>
+          <span className="mx-1 h-4 w-px shrink-0 bg-line" aria-hidden="true" />
           <button
             type="button"
             aria-pressed={inferredActive}
@@ -354,9 +506,11 @@ export function GraphWorkbench() {
 
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
-          {hydrated ? (
+          {!hydrated ? (
+            <GraphLoading label={view === "3d" ? "Preparing the 3D view" : "Preparing the map"} />
+          ) : view === "3d" ? (
             <WorkGraph3D
-              graph={graph}
+              graph={viewGraph}
               height="100%"
               layers={layers}
               selectedNodeId={selectedId}
@@ -365,7 +519,17 @@ export function GraphWorkbench() {
               showLegend={false}
             />
           ) : (
-            <GraphLoading />
+            <ProcessMap
+              layout={layout}
+              lens={lens}
+              selectedId={selectedId}
+              highlightIds={highlightNodeIds}
+              onSelectNode={onSelectNode}
+              focus={focus}
+              containerOf={screenOf}
+              sample={isSample}
+              totalNodes={graph.nodes.length}
+            />
           )}
 
           {currentHop ? (
@@ -400,7 +564,11 @@ export function GraphWorkbench() {
         </div>
 
         <aside className="hidden w-[380px] shrink-0 flex-col overflow-y-auto border-l border-line bg-surface lg:flex scrollbar-thin" aria-label="Node details">
-          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} className="min-h-full" plannerKind={program?.planner} sample={isSample} /> : <NodeDetailEmpty />}
+          {selectedNode ? (
+            <NodeDetail key={selectedNode.id} graph={viewGraph} node={selectedNode} onSelect={selectFromPanel} className="min-h-full" plannerKind={program?.planner} sample={isSample} runStats={selectedStats} />
+          ) : (
+            <NodeDetailEmpty view={view} />
+          )}
         </aside>
       </div>
 
@@ -408,7 +576,7 @@ export function GraphWorkbench() {
         <DialogContent side="right" className="max-w-sm p-0 pt-10">
           <DialogTitle className="sr-only">Node details</DialogTitle>
           <DialogDescription className="sr-only">Details of the selected Work Graph node.</DialogDescription>
-          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} plannerKind={program?.planner} sample={isSample} /> : null}
+          {selectedNode ? <NodeDetail key={selectedNode.id} graph={viewGraph} node={selectedNode} onSelect={selectFromPanel} plannerKind={program?.planner} sample={isSample} runStats={selectedStats} /> : null}
         </DialogContent>
       </Dialog>
     </div>

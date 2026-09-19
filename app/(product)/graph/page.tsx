@@ -3,7 +3,7 @@ import { GraphWorkbench } from "@/components/graph/graph-workbench";
 
 export const metadata: Metadata = {
   title: "Work Graph",
-  description: "The interactive 3D Work Graph: how work actually happens, as discovered by Synforma.",
+  description: "The Work Graph as a process map: the intended path, the discovered screens, observed runs and evidence, with a 3D view on the side.",
 };
 
 export default function GraphPage() {

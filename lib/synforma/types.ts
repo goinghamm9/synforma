@@ -103,7 +103,7 @@ export interface PageModel {
 
 // ───────────────────────────── Actions ─────────────────────────────
 
-export type ActionKind = "click" | "type" | "select" | "check" | "navigate" | "wait" | "expand";
+export type ActionKind = "click" | "type" | "select" | "check" | "navigate" | "wait" | "expand" | "press";
 
 export interface Action {
   kind: ActionKind;
@@ -246,6 +246,8 @@ export interface Requirement {
     rejectedValues?: string[];
     /** Date must be within N days from now. */
     withinDays?: number;
+    /** Date must be at least N days from now. */
+    atLeastDays?: number;
   };
 }
 
@@ -820,6 +822,8 @@ export interface SynformaSettings {
   treatmentShare: number;
   /** Mission Control layout: the one-screen "simple" view or the full eight-phase "advanced" view. */
   demoView: "simple" | "advanced";
+  /** Target application chosen for the next program (id from lib/synforma/targets.ts). */
+  demoTarget: string;
 }
 
 export const DEFAULT_SETTINGS: SynformaSettings = {
@@ -831,4 +835,5 @@ export const DEFAULT_SETTINGS: SynformaSettings = {
   requireApprovalForCommit: true,
   treatmentShare: 0.5,
   demoView: "simple",
+  demoTarget: "crm",
 };

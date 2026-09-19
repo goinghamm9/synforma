@@ -65,6 +65,45 @@ function isoDate(daysAhead: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** A field already holds something the application put there (a prefilled amount, a default option). */
+export function hasOwnValue(field: SemanticElement): boolean {
+  const v = (field.value ?? "").trim();
+  return v.length > 0 && !/^(select|choose|--)/i.test(v);
+}
+
+/**
+ * An alternative value after the application rejected the first one, derived
+ * from the validation messages and the field itself. Attempt 0 is the first
+ * retry. Still only used to move through forms during discovery.
+ */
+export function discoveryRetryValue(field: SemanticElement, messages: string[], attempt: number): string | null {
+  const text = messages.join(" · ");
+  const name = field.name.toLowerCase();
+  if (field.role === "combobox" || field.role === "radio") {
+    const opts = (field.options ?? []).filter((o) => o && !/^(select|choose|--)/i.test(o));
+    return opts[Math.min(attempt + 1, opts.length - 1)] ?? null;
+  }
+  if (field.role === "checkbox" || field.role === "switch") return null;
+  // An example the message itself gives ("as CS-1234", "format: ABC-12", "e.g. 2026-01-31").
+  const example = /\b(?:as|like|e\.g\.?|format:?|such as|for example)\s+["'“]?([A-Za-z0-9_][A-Za-z0-9_\-./@]{1,40})["'”]?/i.exec(text);
+  if (example && !/^(the|a|an|this|that)$/i.test(example[1])) return example[1].replace(/[.,;:]+$/, "");
+  const token = /\b([A-Z]{1,5}-\d{2,8})\b/.exec(text);
+  if (token) return token[1];
+  if (/snake_case|lowercase letters|underscores/i.test(text)) return attempt === 0 ? "discovery_value" : `discovery_value_${attempt + 1}`;
+  const days = /at least (\d+) days/i.exec(text);
+  if (days || field.inputType === "date" || /date/.test(name)) return isoDate((days ? Number(days[1]) : 14) + 4 + attempt * 7);
+  if (/exceed|maximum|at most|up to|too (high|large|big)|greater than/i.test(text)) return attempt === 0 ? "1" : "0.5";
+  if (/minimum|at least (\d+)$|too (low|small)|less than/i.test(text) && (field.inputType === "number" || /amount|quantity|price/.test(name))) return String(100 * (attempt + 1));
+  const sentences = /at least (\d+) sentences?/i.exec(text);
+  if (sentences) return Array.from({ length: Number(sentences[1]) + 1 }, (_, i) => (i === 0 ? "Entered during Synforma discovery." : "Discovery values are placeholders and are never committed.")).join(" ");
+  const chars = /at least (\d+) characters?/i.exec(text);
+  if (chars) return "Entered during Synforma discovery. ".repeat(Math.ceil(Number(chars[1]) / 36) + 1).trim();
+  if (/email/i.test(text) || field.inputType === "email") return "discovery@example.com";
+  if (/number|numeric|digits/i.test(text) || field.inputType === "number") return String(10 * (attempt + 1));
+  if (field.role === "textarea") return "Entered during Synforma discovery. Discovery values are placeholders and are never committed.";
+  return `Synforma discovery ${attempt + 2}`;
+}
+
 /** Values used only to move through forms during discovery. Never committed. */
 export function discoveryValue(field: SemanticElement): string | null {
   const name = field.name.toLowerCase();
@@ -87,6 +126,8 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
   const states = new Map<string, DiscoveredState>();
   const visitedUrls = new Set<string>();
   const instancesPerRoute = new Map<string, number>();
+  /** Menus already tried elsewhere (same name, same items): global navigation such as a project or account switcher. */
+  const seenMenus = new Set<string>();
   const queue: { url: string; depth: number; parentId?: string; via?: Action; path: Action[] }[] = [];
   let stoppedBy: ExploreStats["stoppedBy"] = "exhausted";
   const basePath = startUrl.split("?")[0].replace(/\/$/, "");
@@ -235,6 +276,22 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
     return current;
   }
 
+  /** Bring the frame back to a state: open its URL, then replay the in-page actions (fills, Next clicks) that produced it. */
+  async function restore(state: DiscoveredState): Promise<PageModel> {
+    let page = await driver.goto(state.url);
+    let lastNav = -1;
+    state.path.forEach((a, i) => {
+      if (a.kind === "navigate") lastNav = i;
+    });
+    for (const a of state.path.slice(lastNav + 1)) {
+      if (a.kind === "wait" || a.kind === "navigate") continue;
+      const r = await perform(a);
+      if (r.page) page = r.page;
+    }
+    if (page.dialogs.length) page = await dismissDialog(page);
+    return page;
+  }
+
   /** Explore menus, tabs, disclosures and wizard steps within one URL. */
   async function exploreWithin(state: DiscoveredState): Promise<void> {
     let page = state.page;
@@ -294,6 +351,32 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
         page = r.page;
         state.page = page;
       }
+    }
+
+    // Toggles → switch each unchecked switch on, record the fields it reveals, switch it back off.
+    for (const t of page.fields.filter((f) => (f.role === "switch" || f.role === "checkbox") && !f.checked && !/^(i |we )/i.test(f.name))) {
+      if (overBudget()) return;
+      const before = new Set(page.fields.map((f) => f.key));
+      const on = await perform({ kind: "check", target: t.key, targetName: t.name, targetRole: t.role, value: "true", label: `Turn on ${t.name} (discovery)` });
+      if (!on.ok || !on.page) continue;
+      const revealed = on.page.fields.filter((f) => !before.has(f.key)).map((f) => f.key);
+      if (revealed.length) {
+        state.revealed[t.name] = revealed;
+        log(`Turning on "${t.name}" revealed ${revealed.length} field(s): ${revealed.map((k) => on.page!.fields.find((f) => f.key === k)?.name).join(", ")}`);
+        const toggleId = nodeId("field", state.route, t.key);
+        for (const key of revealed) {
+          const f = on.page.fields.find((x) => x.key === key)!;
+          const fid = nodeId("field", state.route, key);
+          upsertNode(graph, { id: fid, type: "field", label: f.name, description: [f.role, f.inputType, `revealed by ${t.name}`].filter(Boolean).join(" · "), status: "observed", confidence: 0.85, data: { key, role: f.role, inputType: f.inputType ?? null, options: f.options ?? null, required: Boolean(f.required), region: f.region ?? null, path: f.path, screen: state.screenNodeId, revealedBy: { name: t.name, role: t.role, key: t.key } } });
+          upsertEdge(graph, state.screenNodeId, fid, "contains");
+          if (graph.nodes.some((n) => n.id === toggleId)) upsertEdge(graph, toggleId, fid, "reveals");
+        }
+        // Remember the revealed fields on the state so the planner can map requirements to them.
+        state.page = { ...state.page, fields: [...state.page.fields, ...on.page.fields.filter((f) => revealed.includes(f.key))] };
+        emit({ type: "graph", graph });
+      }
+      const off = await perform({ kind: "check", target: t.key, targetName: t.name, targetRole: t.role, value: "false", label: `Turn off ${t.name} (discovery)` });
+      page = off.page ?? page;
     }
 
     // Tabs → click each unselected tab; record revealed fields/actions as part of this screen.
@@ -357,10 +440,21 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
         upsertEdge(graph, menuActionId, itemId, "reveals");
       }
       emit({ type: "graph", graph });
+      const menuSignature = `${mb.name}::${items.map((i) => i.name).join("|")}`;
+      if (seenMenus.has(menuSignature)) {
+        // The same menu on another screen: global navigation, already tried once. Close it and move on.
+        const closed = await perform({ kind: "press", value: "Escape", label: `Close menu ${mb.name}` });
+        if (closed.page) page = closed.page;
+        continue;
+      }
+      seenMenus.add(menuSignature);
       // Close the menu, then try each item from a clean state.
       await driver.perform({ kind: "wait", label: "settle", value: "200" });
       for (const item of items) {
-        if (overBudget()) return;
+        if (overBudget()) {
+          log(`Budget exhausted while trying menu "${mb.name}" on ${state.label}`, "warn");
+          return;
+        }
         if (item.commit) continue;
         // Re-open the menu (menus close after selection).
         const current = driver.snapshot().page;
@@ -374,14 +468,14 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
         if (r.page.url !== page.url) {
           // Navigated somewhere: register and continue via the queue with the human path.
           const itemId = nodeId("action", state.route, mb.key, item.key);
+          const alreadyVisited = visitedUrls.has(r.page.url);
           const target = registerState(r.page, menuPath, state.depth + 1, state.id, { kind: "click", target: item.key, targetName: item.name, targetRole: "menuitem", label: `${mb.name} → ${item.name}` });
           const targetScreen = target?.screenNodeId ?? states.get(r.page.fingerprint)?.screenNodeId;
           if (targetScreen) upsertEdge(graph, itemId, targetScreen, "navigates_to");
           visitedUrls.add(r.page.url);
-          if (target) await exploreWithin(target);
-          await driver.goto(page.url);
-          page = driver.snapshot().page;
-          if (page.dialogs.length) page = await dismissDialog(page);
+          // A global menu (project switcher, account menu) leads to screens reached anyway; explore a destination once.
+          if (target && !alreadyVisited) await exploreWithin(target);
+          page = await restore(state);
         } else if (r.page.dialogs.length) {
           const itemId = nodeId("action", state.route, mb.key, item.key);
           const dialogState = registerState(r.page, menuPath, state.depth + 1, state.id, { kind: "click", label: `${mb.name} → ${item.name}` });
@@ -391,17 +485,23 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
           page = r.page;
         }
       }
+      // A menu left open (a disabled item, a failed click) hides the rest of the screen: close it.
+      if (driver.snapshot().page.actions.some((a) => a.role === "menuitem")) {
+        const closed = await perform({ kind: "press", value: "Escape", label: `Close menu ${mb.name}` });
+        if (closed.page) page = closed.page;
+      }
     }
 
     // Wizard: fill and advance through Next/Continue.
     const nextBtn = page.actions.find((a) => a.role === "button" && NEXT_RE.test(a.name) && !a.commit && !a.disabled);
+    if (!nextBtn && page.actions.some((a) => NEXT_RE.test(a.name))) log(`Wizard on ${state.label}: the forward control is present but disabled or a commit; not advanced`, "warn");
     if (nextBtn && state.depth < limits.maxDepth + 3) {
+      log(`Wizard on ${state.label}: advancing through "${nextBtn.name}"`);
       const fillActions: Action[] = [];
       for (const f of page.fields) {
         if (f.role === "checkbox" || f.role === "switch") continue;
-        const empty = !f.value || /^(select|choose|--)/i.test(f.value);
-        if (!f.required && !empty) continue;
         if (!f.required) continue; // Only required fields are needed to advance during discovery.
+        if (hasOwnValue(f)) continue; // Keep what the application prefilled (an amount, a default option).
         const v = discoveryValue(f);
         if (v === null) continue;
         const kind: Action["kind"] = f.role === "combobox" || f.role === "radio" ? "select" : "type";
@@ -411,17 +511,26 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
       }
       const clickNext: Action = { kind: "click", target: nextBtn.key, targetName: nextBtn.name, targetRole: "button", label: `Click ${nextBtn.name}` };
       let r = await perform(clickNext);
-      if (r.ok && r.page && r.page.fingerprint === page.fingerprint && r.page.alerts.length) {
-        // Validation stopped us: fill invalid fields with discovery values and retry once.
-        log(`Validation on ${state.label}: ${r.page.alerts.join(" / ")}`, "warn");
-        for (const f of r.page.fields.filter((x) => x.invalid)) {
-          const v = discoveryValue(f);
-          if (v === null) continue;
+      // Validation stopped us: refill the invalid fields with values derived from the messages and retry, a few times.
+      for (let attempt = 0; attempt < 3 && r.ok && r.page && r.page.fingerprint === page.fingerprint && r.page.alerts.length; attempt++) {
+        const alerts = r.page.alerts;
+        log(`Validation on ${state.label}: ${alerts.join(" / ")}`, "warn");
+        const invalid = r.page.fields.filter((x) => x.invalid && x.role !== "checkbox" && x.role !== "switch");
+        // Some applications flag nothing as invalid and only show the message; then retry every required field.
+        const targets = invalid.length ? invalid : r.page.fields.filter((x) => x.required && x.role !== "checkbox" && x.role !== "switch");
+        let changed = false;
+        for (const f of targets) {
+          const v = discoveryRetryValue(f, alerts, attempt);
+          if (v === null || v === f.value) continue;
           const kind: Action["kind"] = f.role === "combobox" || f.role === "radio" ? "select" : "type";
-          const a: Action = { kind, target: f.key, targetName: f.name, targetRole: f.role, value: v, label: `Fill ${f.name} (discovery value)` };
+          const a: Action = { kind, target: f.key, targetName: f.name, targetRole: f.role, value: v, label: `Fill ${f.name} (discovery value, retry ${attempt + 1})` };
           const rr = await perform(a);
-          if (rr.ok) fillActions.push(a);
+          if (rr.ok) {
+            fillActions.push(a);
+            changed = true;
+          }
         }
+        if (!changed) break;
         r = await perform(clickNext);
       }
       if (r.ok && r.page && r.page.fingerprint !== page.fingerprint) {

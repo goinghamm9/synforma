@@ -3,8 +3,9 @@ import * as React from "react";
 import type { EdgeType, GraphNode, NodeType, PlannerKind, WorkGraph } from "@/lib/synforma/types";
 import { neighbors } from "@/lib/synforma/graph/work-graph";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 import { EDGE_LABEL, NODE_RADIUS, STATUS_LABEL, TYPE_LABEL } from "./constants";
+import { FRICTION_KIND_LABEL, type FrictionKind, type RunStats } from "./map/model";
 import { describeSource, trustLabel, trustTone } from "./provenance";
 
 /** Keys shown first, per node type. Everything else follows in data order. */
@@ -104,6 +105,49 @@ export interface NodeDetailProps {
   plannerKind?: PlannerKind;
   /** The graph is the hand-written illustrative sample, not a discovered one. */
   sample?: boolean;
+  /** What the stored runs show for this node (the Runs lens of the process map). */
+  runStats?: RunStats;
+}
+
+/** "Observed in runs": visits, completion, median time, friction by kind and re-groundings, from stored events only. */
+function RunStatsBlock({ stats }: { stats: RunStats }) {
+  const friction = (Object.entries(stats.friction) as [FrictionKind, number][]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="border-b border-line px-5 py-4" data-testid="node-run-stats">
+      <p className="eyebrow">Observed in runs</p>
+      <dl className="mt-2 grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+        <dt className="text-slate">Runs entered</dt>
+        <dd className="mono-data text-ink">{stats.visits}</dd>
+        <dt className="text-slate">Completed</dt>
+        <dd className="mono-data text-ink">{stats.completed}</dd>
+        {stats.dropOffs ? (
+          <>
+            <dt className="text-slate">Ended here</dt>
+            <dd className="mono-data text-ink">{stats.dropOffs}</dd>
+          </>
+        ) : null}
+        <dt className="text-slate">Median time</dt>
+        <dd className="mono-data text-ink">{stats.medianMs === null ? "—" : formatDuration(stats.medianMs)}</dd>
+        <dt className="text-slate">Self-healed</dt>
+        <dd className="mono-data text-ink">{stats.regroundings}</dd>
+      </dl>
+      {friction.length ? (
+        <>
+          <p className="mt-3 text-[11px] font-medium text-graphite">Friction</p>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {friction.map(([k, v]) => (
+              <li key={k} className="flex items-baseline justify-between gap-3">
+                <span className="text-graphite">{FRICTION_KIND_LABEL[k]}</span>
+                <span className="mono-data text-ink">{v}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="mt-3 text-xs text-slate">No friction event recorded on this node.</p>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -153,7 +197,7 @@ function ProvenanceBlock({ node, plannerKind, sample }: { node: GraphNode; plann
   );
 }
 
-export function NodeDetail({ graph, node, onSelect, className, plannerKind, sample }: NodeDetailProps) {
+export function NodeDetail({ graph, node, onSelect, className, plannerKind, sample, runStats }: NodeDetailProps) {
   const data = React.useMemo(() => describeNodeData(node), [node]);
   const groups = React.useMemo(() => {
     const map = new Map<string, { edgeType: EdgeType; direction: "out" | "in"; title: string; items: { node: GraphNode; label?: string }[] }>();
@@ -192,6 +236,8 @@ export function NodeDetail({ graph, node, onSelect, className, plannerKind, samp
       </div>
 
       <ProvenanceBlock node={node} plannerKind={plannerKind} sample={sample} />
+
+      {runStats ? <RunStatsBlock stats={runStats} /> : null}
 
       {data.length ? (
         <div className="border-b border-line px-5 py-4">
@@ -254,14 +300,24 @@ export function NodeDetail({ graph, node, onSelect, className, plannerKind, samp
   );
 }
 
-export function NodeDetailEmpty({ className }: { className?: string }) {
+export function NodeDetailEmpty({ className, view = "map" }: { className?: string; view?: "map" | "3d" }) {
   return (
     <div className={cn("flex flex-col px-5 py-4", className)} data-testid="node-detail-empty">
       <p className="eyebrow">Selection</p>
       <p className="mt-2 text-sm text-graphite">Select a node to read what Synforma observed about it.</p>
       <ul className="mt-4 space-y-1.5 text-xs text-slate">
-        <li>Drag to orbit, scroll to zoom, right-drag to pan.</li>
-        <li>Hover a node for its label; click to inspect its neighbours.</li>
+        {view === "3d" ? (
+          <>
+            <li>Drag to orbit, scroll to zoom, right-drag to pan.</li>
+            <li>Hover a node for its label; click to inspect its neighbours.</li>
+          </>
+        ) : (
+          <>
+            <li>Scroll to zoom, drag the canvas to pan; the minimap and the controls fit the view.</li>
+            <li>Hover a node to light its neighbourhood; click, or Tab to it and press Enter, to inspect it.</li>
+            <li>Lenses change what the map shows; layers hide node types.</li>
+          </>
+        )}
         <li>Press Escape or click empty space to clear the selection.</li>
       </ul>
     </div>

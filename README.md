@@ -18,10 +18,14 @@ setting may ask for a Netlify team login).
 | `/` | The site (`/thesis` for the long form) |
 | `/demo` | Mission Control: the whole loop against the bundled CRM |
 | `/employee` | Employee view: do the workflow yourself with the Synforma overlay |
-| `/graph` | Interactive 3D Work Graph of the discovered application and program |
+| `/graph` | Work Graph as a 2D process map: Workflow, Application, Runs and Evidence lenses, with the 3D scene behind a toggle |
 | `/science` | Barrier model, intervention registry, evidence classes, decision policy, citations |
 | `/settings` | Planner preference, assistance and sensing controls, data export / import / delete |
-| `/sandbox/crm` | Meridian CRM, the target application (works standalone too) |
+| `/sandbox` | The four demo applications, each usable on its own |
+| `/sandbox/crm` | Meridian CRM (fictional CRM) |
+| `/sandbox/billing` | Ledgerline Billing (billing-dashboard replica) |
+| `/sandbox/data` | Nimbus Data Console (developer-console replica) |
+| `/sandbox/erp` | Atlas ERP (enterprise-ERP replica) |
 
 Everything runs in the browser against a same-origin iframe. All state lives in localStorage. Nothing
 leaves the browser except calls to the optional planner route.
@@ -55,6 +59,29 @@ only on the server (`app/api/planner`). The browser sees `{ configured, provider
 malformed reply makes the route answer 502 and the client falls back to the heuristic planner. The model
 can improve understanding but cannot invent techniques, citations or statistics. Settings → Planner
 chooses Automatic, Heuristic only or Language model.
+
+## Four applications, one engine
+
+Mission Control's Connect stage offers four target applications. Every one is a fictional replica of a
+category of enterprise software, built for this demonstration and labelled as such in its own footer;
+none contains a connector, a selector or any hook for Synforma. Each ships with an objective, a work
+context, a simulated vendor update (labels, menus, tabs and DOM ids change) and presenter notes.
+`/demo?target=billing` (or `data`, `erp`, `crm`) opens Mission Control on that application.
+
+| Application | Objective | Both UI versions, zero configuration |
+|---|---|---|
+| Meridian CRM | qualified opportunity from an inbound lead | 5/5 requirements, self-healed |
+| Ledgerline Billing | compliant refund for a disputed charge | 5/5 requirements, self-healed |
+| Atlas ERP | approvable purchase requisition | 5/5 requirements, self-healed |
+| Nimbus Data Console | new table with row level security on | partial: the security toggle is not yet read as a labelled control (see `docs/ROADMAP.md`) |
+
+The engine changes that made this possible are generic, not per app: discovery keeps prefilled values,
+retries rejected fields with values derived from the validation message, reads fields behind toggles,
+closes menus it opened and replays a wizard's path instead of reloading it; the planner picks the
+terminal commit control, sets selects the objective names outright and ticks acknowledgement boxes on
+the commit screen; the runner finds fields a vendor update moved into a tab, skips a "Next" the new
+version no longer needs, never re-grounds forward navigation onto "Back", repairs duplicate names and
+re-synchronises with a wizard that jumped back. `node verify/targets.spec.js` runs all four.
 
 ## Demo in five minutes
 
@@ -127,7 +154,9 @@ planner is optional; the heuristic planner is deliberately simple. Synthetic use
 capabilities switched off and are labelled as simulation everywhere. No statistics are fabricated:
 metrics return null until enough stored runs exist, citations come only from
 `lib/synforma/science/citations.ts`, and Synforma never infers emotion, personality or employee worth.
-See `docs/ROADMAP.md`.
+Imported stimulus analyses (Science page, research use) are an encoding model's predictions about the
+screens a run showed, the predicted response of an average subject, not measurements of people. See
+`docs/ROADMAP.md`.
 
 ## Documentation
 

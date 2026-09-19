@@ -3,7 +3,6 @@ import * as React from "react";
 import Link from "next/link";
 import { Cpu, Loader2, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Skeleton } from "@/components/ui";
-import { SANDBOX_APP } from "@/lib/synforma/demo";
 import { cn } from "@/lib/utils";
 import { PREFERENCE_LABEL } from "./types";
 import { MissionSessionProvider } from "./session/context";
@@ -117,14 +116,14 @@ export function MissionControl() {
           <section className="h-[420px] shrink-0 border-b border-line lg:h-auto lg:w-[58%] lg:border-b-0 lg:border-r" aria-label="Target application">
             <TargetFrame
               iframeRef={connection.iframeRef}
-              title={`${SANDBOX_APP.name} · sandbox`}
+              title={`${session.target.name} · sandbox`}
               connected={connection.connected}
               connecting={connection.status === "connecting"}
               currentUrl={connection.currentUrl}
               busy={Boolean(busyLabel)}
               cursor={connection.cursor}
               highlight={connection.highlight}
-              onConnect={() => void connection.connect()}
+              onConnect={() => void connection.connect(session.target)}
             />
           </section>
           {advanced ? (

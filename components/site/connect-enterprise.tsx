@@ -11,7 +11,9 @@ interface Connector {
 }
 
 const CONNECTORS: Connector[] = [
-  { name: "Meridian CRM (sandbox)", kind: "Bundled application", status: "connected", href: "/demo" },
+  { name: "Meridian CRM", kind: "Demo application · fictional CRM", status: "connected", href: "/demo?target=crm" },
+  { name: "Ledgerline Billing", kind: "Demo application · billing-dashboard replica", status: "connected", href: "/demo?target=billing" },
+  { name: "Atlas ERP", kind: "Demo application · enterprise-ERP replica", status: "connected", href: "/demo?target=erp" },
   { name: "Microsoft 365", kind: "Productivity suite", status: "roadmap" },
   { name: "Google Workspace", kind: "Productivity suite", status: "roadmap" },
   { name: "Salesforce", kind: "CRM", status: "roadmap" },
@@ -43,8 +45,8 @@ function ConnectorTile({ connector, index }: { connector: Connector; index: numb
             className="inline-flex w-fit items-center gap-1.5 rounded-md border border-verdant/40 bg-verdant-soft px-2.5 py-1 text-xs font-medium text-verdant transition-colors hover:border-verdant"
           >
             <Check aria-hidden="true" className="h-3.5 w-3.5" />
-            Connected
-            <span className="sr-only">, open the demo</span>
+            Try it
+            <span className="sr-only">, open the demo on this application</span>
           </Link>
         ) : (
           <span

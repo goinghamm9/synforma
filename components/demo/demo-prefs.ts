@@ -7,8 +7,8 @@ import type { DemoPrefs, UiVariant } from "./types";
  */
 const KEY = "synforma-demo-ui-v1";
 
-/** The sandbox stores its own UI version here (same origin, shared storage). */
-const SANDBOX_UI_KEY = "meridian-ui-version";
+/** Each sandbox stores its own UI version under its own key (same origin, shared storage); the target registry names it. */
+const DEFAULT_SANDBOX_UI_KEY = "meridian-ui-version";
 
 type PrefsFile = Record<string, DemoPrefs>;
 
@@ -47,10 +47,10 @@ export function clearPrefs(programId: string): void {
   }
 }
 
-/** Reads the sandbox's UI version as it is stored right now ("v1" when unset). */
-export function readSandboxUiVariant(): UiVariant {
+/** Reads a sandbox's UI version as it is stored right now ("v1" when unset). */
+export function readSandboxUiVariant(key: string = DEFAULT_SANDBOX_UI_KEY): UiVariant {
   try {
-    return window.localStorage.getItem(SANDBOX_UI_KEY) === "v2" ? "v2" : "v1";
+    return window.localStorage.getItem(key) === "v2" ? "v2" : "v1";
   } catch {
     return "v1";
   }

@@ -112,12 +112,55 @@ export function candidatesFor(q: GroundingQuery, page: PageModel): GroundingCand
     .sort((a, b) => b.score - a.score);
 }
 
+const FORWARD_RE = /^(next|continue|proceed|forward)\b/i;
+const BACKWARD_RE = /^(back|previous|prev|cancel|close|dismiss|return)\b/i;
+
+/** "Next" must never land on "Back": a renamed control keeps its direction. */
+function oppositeDirection(a: string | undefined, b: string): boolean {
+  if (!a) return false;
+  return (FORWARD_RE.test(a) && BACKWARD_RE.test(b)) || (BACKWARD_RE.test(a) && FORWARD_RE.test(b));
+}
+
+/** Initials of a multi-word name ("Row level security" → "rls"). */
+function initials(name: string): string | null {
+  const words = tokenize(name).filter((t) => t.length > 1);
+  return words.length >= 3 ? words.map((w) => w[0]).join("") : null;
+}
+
+/** A renamed control that keeps the old name's acronym ("Row level security" → "RLS protection"), or the reverse. */
+function acronymMatch(a: string, b: string): boolean {
+  const ia = initials(a);
+  const ib = initials(b);
+  const ta = tokenize(a);
+  const tb = tokenize(b);
+  return Boolean((ia && tb.includes(ia)) || (ib && ta.includes(ib)));
+}
+
 export function ground(q: GroundingQuery, page: PageModel, threshold = 0.42): GroundingCandidate | null {
   if (q.key) {
     const exact = page.elements.find((e) => e.key === q.key);
     if (exact) return { element: exact, score: 1, reasons: ["exact semantic key"] };
   }
-  const [best, second] = candidatesFor(q, page);
+  const [best, second] = candidatesFor(q, page).filter((c) => !oppositeDirection(q.name, c.element.name));
+  const lexicalOk = Boolean(best) && best!.score >= threshold && !(second && best!.score < 0.6 && second.score > best!.score - 0.05);
+  if (!lexicalOk && q.role === "menuitem" && q.name) {
+    // Inside an open menu the choice is small: the one item that shares a content word with the old name is it.
+    const words = new Set(tokenize(q.name).filter((t) => t.length > 2));
+    const items = page.elements.filter((e) => e.role === "menuitem" && !e.disabled);
+    const sharing = items.filter((e) => tokenize(e.name).some((t) => words.has(t)));
+    if (sharing.length === 1) return { element: sharing[0], score: threshold, reasons: ["only menu item sharing a word with the old name"] };
+  }
+  if (!lexicalOk && q.name) {
+    const sameRole = page.elements.filter((e) => !e.disabled && (!q.role || e.role === q.role) && acronymMatch(q.name!, e.name));
+    if (sameRole.length === 1) return { element: sameRole[0], score: threshold, reasons: ["acronym of the old name"] };
+  }
+  if (!lexicalOk && q.commit === true && q.kind !== "field") {
+    // A renamed commit verb ("Submit" → "Order") shares no words; when the screen has exactly one commit control, that is it.
+    const commits = page.elements.filter((e) => e.commit && !e.disabled && (e.role === "button" || e.role === "menuitem"));
+    const inRegion = q.region ? commits.filter((e) => e.region === q.region) : commits;
+    const pool = inRegion.length ? inRegion : commits;
+    if (pool.length === 1) return { element: pool[0], score: threshold, reasons: ["only commit control on this screen"] };
+  }
   if (!best || best.score < threshold) return null;
   // Ambiguity guard: if two candidates are nearly tied and both weak, refuse.
   if (second && best.score < 0.6 && second.score > best.score - 0.05) return null;

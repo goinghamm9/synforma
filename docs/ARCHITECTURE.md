@@ -6,7 +6,7 @@ Synforma is certain enough to intervene or act, and continuously proving that th
 combination got better.
 
 Contents: [Layers](#layers) · [Operating stack](#operating-stack) · [Runtime topology](#runtime-topology) ·
-[Mission Control views](#mission-control-views) · [Module map](#module-map) · [Data model](#data-model) ·
+[Mission Control views](#mission-control-views) · [Work Graph page](#work-graph-page) · [Module map](#module-map) · [Data model](#data-model) ·
 [Trust properties](#trust-properties) · [Self-healing](#self-healing) · [Knowledge layers](#knowledge-layers) ·
 [Design language](#design-language) · [Sandbox specification](#sandbox-specification-meridian-crm) ·
 [Limitations](#limitations-of-this-prototype)
@@ -123,6 +123,35 @@ the heuristic planner.
 
 Both views drive the same engine and store; the simple view hides panels, it does not skip gates.
 
+## Work Graph page
+
+`/graph` (`components/graph/`) draws the Work Graph as a 2D process map (React Flow, dagre for the
+ranking), the convention of process-mining and product-analytics tools: layered left to right, the
+intended path as the happy path, observed traffic on the edges, click for detail, zoom, pan and a
+minimap. Nodes are buttons with accessible names. Four lenses read the same graph
+(`components/graph/map/model.ts`, pure functions over the stored graph, program, runs and events):
+
+- **Workflow**: objective → numbered steps (with their Guide / Assist / Act mode) → outcome, the
+  screens each step touches below, its requirements and policies above; every other discovered screen
+  is hidden behind "Show all screens". A discovered graph holds no objective or outcome node, so the
+  map adds both from the program (the parsed objective and the success definition, both
+  `ORGANIZATION_APPROVED`).
+- **Application**: every discovered screen laid out by `navigates_to` edges (an action's navigation
+  is attributed to its screen and labelled with the action), dialogs as screens, actions and fields
+  counted on their screen and listed in the detail panel, objects beside the screens that show them.
+- **Runs**: the workflow lens plus what the stored events of this program show: runs per edge of the
+  intended path, detours (back or skip) in signal, friction counts per step (hesitation, validation
+  error, backtrack, wrong screen and the inferred friction states), re-groundings as a self-heal
+  badge, drop-offs and the median step time. Without runs it says to run the demo first.
+- **Evidence**: the workflow lens coloured by provenance with the trust wording of `engine/evidence.ts`
+  (observed on the live instance, organization-approved, observed, model-inferred), plus "contested"
+  for a requirement no field fulfils or a node with a contested claim.
+
+Search pans to a node (or to the screen containing an action or field), the intent-flow playback
+steps through objective → workflow → steps → screens → outcome, and layer chips hide node types. The
+force-directed 3D scene (`work-graph-3d.tsx`, WebGL) remains behind a "Map | 3D" toggle remembered
+in `localStorage`; it is the same graph and selection, not a separate model.
+
 ## Module map
 
 | Module | Responsibility |
@@ -154,8 +183,10 @@ Both views drive the same engine and store; the simple view hides panels, it doe
 | `engine/ledger.ts` | Provenance and rollback ledger entries with before/after state; undo of reversible actions |
 | `engine/demonstration.ts` | Demonstration recorder (semantic trace, no typed values) and workflow reconstruction with clarification questions |
 | `science/techniques.ts`, `science/citations.ts` | The only sources of techniques and citations |
-| `store/index.ts` | zustand + localStorage persistence (programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, claims, ledger, contracts, settings), export/import, settings migration |
-| `demo.ts` | Demo defaults: sandbox descriptor, default objective and context |
+| `analysis/stimulus.ts` | Stimulus analysis contract (Zod): the predicted cortical response of an average subject to recorded screen content, produced offline by the TRIBE v2 bridge (`services/tribe-bridge`) and imported as JSON; `parseStimulusAnalysis`, per-step means, the verbatim disclaimer. A property of the screens, never a measurement of a person |
+| `store/index.ts` | zustand + localStorage persistence (programs, graphs, discoveries, runs, events, signals, hypotheses, interventions, audit, approvals, proficiency, claims, ledger, contracts, analyses, settings), export/import, settings migration |
+| `demo.ts` | Demo defaults for the CRM: descriptor, default objective and context |
+| `targets.ts` | Target-application registry: the four replica apps with base URL, entry record, UI-version key, objective, work context, context fields and presenter notes; `targetForProgram`, `contextFor` |
 
 ## Data model
 
@@ -179,6 +210,7 @@ and row-level security added):
 | `ledger` | `action_ledger` | before/after, approval, rollback capability, rolled-back marker |
 | `contracts` | `autonomy_contracts` | per workflow, versioned, approver |
 | `proficiency` | `proficiency_state` | per person × workflow × step (employee-private) |
+| `analyses` | `stimulus_analyses` | imported TRIBE v2 predictions about the screens of a run (research use); linked to a run/program when known |
 
 ## Trust properties
 

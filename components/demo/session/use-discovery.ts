@@ -5,7 +5,7 @@ import { explore, type DiscoveredState } from "@/lib/synforma/engine/explorer";
 import { createPlanner, fetchPlannerStatus, resolvePlannerKind } from "@/lib/synforma/planner";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
 import { cloneGraph, countByType, createGraph } from "@/lib/synforma/graph/work-graph";
-import { SANDBOX_APP } from "@/lib/synforma/demo";
+import type { TargetApp } from "@/lib/synforma/targets";
 import type { PlannerKind, Program, WorkGraph } from "@/lib/synforma/types";
 import { shortId } from "@/lib/utils";
 import type { LogLevel, PhaseId } from "../types";
@@ -27,6 +27,7 @@ export interface DiscoveryApi {
 }
 
 interface Options {
+  target: TargetApp;
   connection: ConnectionApi;
   programId: string | null;
   plannerStatus: PlannerStatus | null;
@@ -35,7 +36,7 @@ interface Options {
 }
 
 /** Explorer run with live graph updates, planning and re-planning, and the discovery log. */
-export function useDiscovery({ connection, programId, plannerStatus, setPhase, setContext }: Options): DiscoveryApi {
+export function useDiscovery({ connection, programId, plannerStatus, setPhase, setContext, target }: Options): DiscoveryApi {
   const { getDriver, driverLogSinkRef, abortRef, hideOverlays } = connection;
   const graphTimer = React.useRef<number | null>(null);
   const pendingGraph = React.useRef<WorkGraph | null>(null);
@@ -58,8 +59,8 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
       setDiscovery((d) => ({ ...d, status: "planning", error: null }));
       try {
         const planner = createPlanner(kind);
-        const parsed = await planner.parseObjective({ objectiveText: prog.objectiveText, appName: SANDBOX_APP.name });
-        const inferred = await planner.inferWorkflow({ parsed, states, graph, startUrl: SANDBOX_APP.baseUrl });
+        const parsed = await planner.parseObjective({ objectiveText: prog.objectiveText, appName: target.name });
+        const inferred = await planner.inferWorkflow({ parsed, states, graph, startUrl: target.baseUrl });
         const fallback = kind !== "heuristic" ? ((planner as { lastError?: string | null }).lastError ?? null) : null;
         const effectiveKind: PlannerKind = fallback ? "heuristic" : kind;
         const workflow = versionWorkflow(inferred, prog.workflow, effectiveKind, replanned);
@@ -83,7 +84,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
         patchProgram(prog.id, { status: "draft" });
       }
     },
-    [pushDiscoveryLog, setPhase],
+    [pushDiscoveryLog, setPhase, target],
   );
 
   const discover = React.useCallback(
@@ -99,7 +100,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
       setLiveGraph(null);
       setPhase("discover");
       patchProgram(prog.id, { status: "discovering", parsed: undefined, workflow: undefined, discovery: { startedAt, screens: 0, actions: 0, fields: 0, objects: 0, statesVisited: 0 } });
-      useSynforma.getState().addAudit({ actor: "synforma", action: "Discovery started", programId: prog.id, target: SANDBOX_APP.baseUrl, detail: "commit actions are recorded, never executed" });
+      useSynforma.getState().addAudit({ actor: "synforma", action: "Discovery started", programId: prog.id, target: target.baseUrl, detail: "commit actions are recorded, never executed" });
       driver.paceMs = 120;
       driverLogSinkRef.current = (m) => pushDiscoveryLog(/re-grounded/i.test(m) ? "heal" : /could not/i.test(m) ? "warn" : "info", m);
       let statesSeen = 0;
@@ -114,8 +115,8 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
       try {
         const { states, stats } = await explore({
           driver,
-          startUrl: SANDBOX_APP.baseUrl,
-          appName: SANDBOX_APP.name,
+          startUrl: target.baseUrl,
+          appName: target.name,
           graph,
           limits: { maxStates: 40, timeBudgetMs: 120_000 },
           signal: ac.signal,
@@ -166,7 +167,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
         patchProgram(prog.id, { status: "draft" });
       }
     },
-    [abortRef, driverLogSinkRef, getDriver, hideOverlays, plan, pushDiscoveryLog, setPhase],
+    [abortRef, driverLogSinkRef, getDriver, hideOverlays, plan, pushDiscoveryLog, setPhase, target],
   );
 
   const start = React.useCallback(
@@ -181,7 +182,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
           id: shortId("prg"),
           title: "New program",
           objectiveText,
-          application: { name: SANDBOX_APP.name, baseUrl: SANDBOX_APP.baseUrl },
+          application: { name: target.name, baseUrl: target.baseUrl },
           context: ctx,
           graphId: shortId("g"),
           status: "discovering",
@@ -192,7 +193,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
         s.upsertProgram(prog);
         s.setActiveProgram(prog.id);
         s.saveGraph(createGraph(prog.graphId));
-        s.addAudit({ actor: "admin", action: "Program created", programId: prog.id, target: SANDBOX_APP.name, detail: `planner: ${kind}` });
+        s.addAudit({ actor: "admin", action: "Program created", programId: prog.id, target: target.name, detail: `planner: ${kind}` });
       } else {
         prog = { ...prog, objectiveText, planner: kind, context: ctx };
         s.upsertProgram(prog);
@@ -211,7 +212,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
       }
       await discover(prog, kind);
     },
-    [discover, plan, plannerStatus, programId, pushDiscoveryLog, setContext, setPhase],
+    [discover, plan, plannerStatus, programId, pushDiscoveryLog, setContext, setPhase, target],
   );
 
   const stop = React.useCallback(() => {

@@ -1,0 +1,510 @@
+/*
+  Process map: React Flow recoloured with the app's tokens (app/globals.css),
+  plus the node and edge chrome. The app is light only (color-scheme: light).
+*/
+.process-map {
+  --xy-background-color: var(--paper);
+  --xy-background-pattern-color: var(--line-strong);
+  --xy-edge-stroke: var(--line-strong);
+  --xy-edge-stroke-width: 1;
+  --xy-edge-stroke-selected: var(--ink);
+  --xy-edge-label-background-color: var(--surface);
+  --xy-edge-label-color: var(--graphite);
+  --xy-node-background-color: var(--surface);
+  --xy-node-border: 1px solid var(--line-strong);
+  --xy-node-border-radius: 8px;
+  --xy-node-color: var(--ink);
+  --xy-node-boxshadow-hover: none;
+  --xy-node-boxshadow-selected: none;
+  --xy-handle-background-color: transparent;
+  --xy-handle-border-color: transparent;
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color: color-mix(in oklab, var(--paper) 72%, transparent);
+  --xy-minimap-mask-stroke-color: var(--line-strong);
+  --xy-minimap-mask-stroke-width: 1;
+  --xy-minimap-node-background-color: var(--line-strong);
+  --xy-minimap-node-stroke-color: transparent;
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--graphite);
+  --xy-controls-button-color-hover: var(--ink);
+  --xy-controls-button-border-color: var(--line);
+  --xy-controls-box-shadow: none;
+  --xy-attribution-background-color: transparent;
+  --xy-selection-background-color: transparent;
+  --xy-selection-border: none;
+  position: absolute;
+  inset: 0;
+  font-family: var(--font-sans);
+}
+.process-map .react-flow__node {
+  cursor: default;
+}
+.process-map .react-flow__handle {
+  width: 2px;
+  height: 2px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+.process-map .react-flow__controls {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.process-map .react-flow__controls-button {
+  border-bottom: 1px solid var(--line);
+  width: 28px;
+  height: 28px;
+}
+.process-map .react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+.process-map .react-flow__controls-button svg {
+  max-width: 12px;
+  max-height: 12px;
+}
+.process-map .react-flow__minimap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-left: 52px;
+  width: 160px;
+  height: 100px;
+}
+.process-map .react-flow__minimap svg {
+  width: 160px;
+  height: 100px;
+}
+.process-map .react-flow__attribution {
+  font-size: 9px;
+  opacity: 0.7;
+}
+.process-map .react-flow__attribution a {
+  color: var(--mist);
+}
+@media (max-width: 639px) {
+  .process-map .react-flow__minimap {
+    display: none;
+  }
+}
+
+/* ── nodes ── */
+.pm-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  transition:
+    opacity 180ms ease-out,
+    box-shadow 180ms ease-out,
+    border-color 180ms ease-out;
+}
+.pm-node:hover {
+  border-color: var(--graphite);
+}
+.pm-node:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.pm-node.is-path {
+  border-color: var(--graphite);
+}
+.pm-node.is-selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.pm-node.is-highlighted {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.pm-node.is-selected.is-highlighted {
+  box-shadow:
+    0 0 0 2px var(--ink),
+    0 0 0 4px var(--signal);
+}
+.pm-node.is-dimmed {
+  opacity: 0.28;
+}
+.pm-node--objective,
+.pm-node--outcome {
+  background: var(--surface-2);
+}
+.pm-node--objective.is-path,
+.pm-node--outcome.is-path {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.pm-node--objective.is-path .pm-eyebrow,
+.pm-node--outcome.is-path .pm-eyebrow,
+.pm-node--objective.is-path .pm-sub,
+.pm-node--outcome.is-path .pm-sub,
+.pm-node--objective.is-path .pm-runs,
+.pm-node--outcome.is-path .pm-runs,
+.pm-node--objective.is-path .pm-tone,
+.pm-node--outcome.is-path .pm-tone {
+  color: var(--mist);
+}
+.pm-node--workflow.is-path {
+  border-width: 1.5px;
+  border-color: var(--ink);
+}
+.pm-node--requirement,
+.pm-node--policy,
+.pm-node--intervention,
+.pm-node--capability,
+.pm-node--role,
+.pm-node--person,
+.pm-node--object {
+  background: var(--paper);
+  border-style: dashed;
+  padding: 7px 10px;
+}
+.pm-node--requirement:hover,
+.pm-node--policy:hover,
+.pm-node--intervention:hover {
+  background: var(--surface);
+}
+.pm-node--screen {
+  border-radius: 4px;
+}
+.pm-node--screen:not(.is-path) {
+  border-color: var(--line);
+  color: var(--graphite);
+}
+.pm-node--step {
+  padding: 9px 12px 9px 10px;
+}
+.pm-step-num {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.pm-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 3px;
+}
+.pm-eyebrow {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--slate);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pm-title {
+  font-size: 12.5px;
+  line-height: 1.25;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pm-title--2 {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.pm-title--small {
+  font-size: 11.5px;
+  font-weight: 450;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.pm-sub,
+.pm-route {
+  font-size: 10px;
+  color: var(--slate);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pm-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--slate);
+  line-height: 1;
+}
+.pm-meta-item {
+  white-space: nowrap;
+}
+.pm-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--graphite);
+  background: var(--surface);
+}
+.pm-chip--act {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.pm-chip--assist {
+  background: var(--surface-2);
+}
+.pm-runs {
+  font-size: 10px;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+.pm-tone {
+  font-size: 9.5px;
+  color: var(--slate);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pm-badges {
+  position: absolute;
+  top: -9px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+.pm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--graphite);
+}
+.pm-badge--friction {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+  color: var(--signal);
+}
+.pm-badge--heal {
+  border-color: var(--verdant);
+  background: var(--verdant-soft);
+  color: var(--verdant);
+}
+.pm-badge--drop {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+  color: var(--graphite);
+}
+
+/* Evidence lens: a tone bar on the left, matching the trust badges of the detail panel. */
+.pm-node[class*="tone-"] {
+  border-left-width: 4px;
+}
+.pm-node.tone-live {
+  border-left-color: var(--verdant);
+}
+.pm-node.tone-approved {
+  border-left-color: var(--ink);
+}
+.pm-node.tone-observed {
+  border-left-color: var(--graphite);
+}
+.pm-node.tone-inferred {
+  border-left-color: var(--amber);
+  background: var(--amber-soft);
+}
+.pm-node.tone-contested {
+  border-left-color: var(--signal);
+  background: var(--signal-soft);
+}
+.pm-node.tone-unknown,
+.pm-node.tone-illustrative {
+  border-left-color: var(--mist);
+}
+.pm-node--objective.is-path[class*="tone-"],
+.pm-node--outcome.is-path[class*="tone-"] {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.pm-node--objective.is-path[class*="tone-"] .pm-eyebrow,
+.pm-node--outcome.is-path[class*="tone-"] .pm-eyebrow,
+.pm-node--objective.is-path[class*="tone-"] .pm-tone,
+.pm-node--outcome.is-path[class*="tone-"] .pm-tone {
+  color: var(--slate);
+}
+.pm-node--objective.is-path.tone-approved,
+.pm-node--outcome.is-path.tone-approved {
+  border-left-color: var(--ink);
+}
+.pm-node--workflow.is-path {
+  background: var(--surface-2);
+}
+
+/* ── edges ── */
+.pm-edge {
+  transition: opacity 180ms ease-out;
+}
+.pm-edge.is-dimmed {
+  opacity: 0.12 !important;
+}
+.pm-edge.is-lit.pm-edge--structural,
+.pm-edge.is-lit.pm-edge--navigation {
+  stroke: var(--graphite) !important;
+}
+.pm-edge-label {
+  position: absolute;
+  pointer-events: all;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--graphite);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+  transition: opacity 180ms ease-out;
+}
+.pm-edge-label--traffic {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  font-weight: 500;
+}
+.pm-edge-label--traffic.is-happy {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.pm-edge-label--observed {
+  border-color: var(--signal);
+  color: var(--signal);
+  background: var(--signal-soft);
+}
+.pm-edge-label-note {
+  font-weight: 400;
+  opacity: 0.8;
+}
+.pm-edge-label.is-dimmed {
+  opacity: 0.15;
+}
+
+/* ── legend strip (top of the canvas, never over the map) ── */
+.process-map .react-flow__panel.pm-top {
+  margin: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  pointer-events: none;
+}
+.process-map .react-flow__panel.pm-top > * {
+  pointer-events: auto;
+}
+.pm-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  backdrop-filter: blur(4px);
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--graphite);
+}
+@media (max-width: 639px) {
+  .pm-legend {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+.pm-legend-title {
+  font-size: 9px;
+  flex: 0 0 auto;
+}
+.pm-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.pm-legend-line {
+  flex: 0 0 22px;
+  height: 0;
+  border-top: 2px solid var(--ink);
+}
+.pm-legend-line--thin {
+  border-top-width: 1px;
+  border-top-color: var(--mist);
+}
+.pm-legend-line--dashed {
+  border-top-width: 1px;
+  border-top-style: dashed;
+  border-top-color: var(--line-strong);
+}
+.pm-legend-line--traffic {
+  border-top-width: 4px;
+}
+.pm-legend-line--observed {
+  border-top-width: 2px;
+  border-top-color: var(--signal);
+}
+.pm-legend-swatch {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+.pm-legend-note {
+  color: var(--slate);
+}
+.pm-note {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--amber-soft) 70%, var(--surface));
+  font-size: 11px;
+  line-height: 1.4;
+}

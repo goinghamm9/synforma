@@ -10,6 +10,7 @@ import { FrictionStates } from "@/components/science/friction-states";
 import { GuidanceFading } from "@/components/science/guidance-fading";
 import { KnowledgeSources } from "@/components/science/knowledge-sources";
 import { ScienceSection } from "@/components/science/shell";
+import { StimulusAnalysisPanel } from "@/components/science/stimulus-analysis";
 import { InterventionRegistry } from "@/components/science/technique-card";
 import { CITATIONS } from "@/lib/synforma/science/citations";
 import { TECHNIQUES } from "@/lib/synforma/science/techniques";
@@ -17,7 +18,7 @@ import { TECHNIQUES } from "@/lib/synforma/science/techniques";
 export const metadata: Metadata = {
   title: "Science",
   description:
-    "How Synforma separates evidence from theory, theory from stance, and all three from the product hypothesis it tests per program: the barrier model, the observable interaction states, the intervention registry, the decision policy including doing nothing, guidance fading, the levels of automation, and where its knowledge comes from.",
+    "How Synforma separates evidence from theory, theory from stance, and all three from the product hypothesis it tests per program: the barrier model, the observable interaction states, the intervention registry, the decision policy including doing nothing, guidance fading, the levels of automation, where its knowledge comes from, and a research import of the predicted cortical response of an average subject to the screens a run showed.",
 };
 
 const CONTENTS: { id: string; label: string }[] = [
@@ -30,6 +31,7 @@ const CONTENTS: { id: string; label: string }[] = [
   { id: "fading", label: "Guidance fades with mastery" },
   { id: "automation", label: "Guide, Assist, Act" },
   { id: "knowledge", label: "Where knowledge comes from" },
+  { id: "stimulus", label: "Predicted cortical response to screens" },
   { id: "references", label: "References" },
 ];
 
@@ -168,8 +170,18 @@ export default function SciencePage() {
         </ScienceSection>
 
         <ScienceSection
-          id="references"
+          id="stimulus"
           index="10"
+          eyebrow="Research"
+          title="Predicted cortical response to screens"
+          lede="An optional research import: what an encoding model predicts an average subject's cortex would do while the screens of a run are on display. A property of the screens, produced offline from a screen recording, and never a measurement of a person."
+        >
+          <StimulusAnalysisPanel />
+        </ScienceSection>
+
+        <ScienceSection
+          id="references"
+          index="11"
           eyebrow="References"
           title="Citations"
           lede="Every research reference used anywhere in Synforma. Each entry is a published work with its DOI, and states carefully what Synforma takes from it."

@@ -2,12 +2,13 @@
 import * as React from "react";
 import { ArrowLeft, Compass, Loader2, RotateCcw } from "lucide-react";
 import { Badge, Button, Input, Label, Textarea } from "@/components/ui";
-import { CONTEXT_FIELDS } from "@/lib/synforma/demo";
+import type { ContextField } from "@/lib/synforma/targets";
 import { Note, PanelHeader } from "../bits";
 
 interface Props {
   objective: string;
   context: Record<string, string>;
+  contextFields: readonly ContextField[];
   hasDiscovery: boolean;
   plannerLabel: string;
   busy: boolean;
@@ -15,7 +16,7 @@ interface Props {
   onBack: () => void;
 }
 
-export function ObjectivePanel({ objective, context, hasDiscovery, plannerLabel, busy, onStart, onBack }: Props) {
+export function ObjectivePanel({ objective, context, contextFields, hasDiscovery, plannerLabel, busy, onStart, onBack }: Props) {
   const [text, setText] = React.useState(objective);
   const [ctx, setCtx] = React.useState<Record<string, string>>(context);
   const valid = text.trim().length > 10;
@@ -38,7 +39,7 @@ export function ObjectivePanel({ objective, context, hasDiscovery, plannerLabel,
         <legend className="text-sm font-medium text-ink">Work context Synforma may use</legend>
         <p className="text-xs text-slate">Values Synforma is allowed to use when acting on behalf of a person. Judgment fields are never guessed from these.</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {CONTEXT_FIELDS.map((f) => (
+          {contextFields.map((f) => (
             <div key={f.key} className="space-y-1.5">
               <Label htmlFor={`ctx-${f.key}`} className="text-xs">
                 {f.label}

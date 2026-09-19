@@ -1,8 +1,8 @@
 "use client";
 import * as React from "react";
-import { DEFAULT_OBJECTIVE, SANDBOX_APP } from "@/lib/synforma/demo";
 import { PanelSkeleton } from "./bits";
 import { useMissionSession } from "./session/context";
+import { TargetPicker } from "./target-picker";
 import { ConnectPanel } from "./phases/connect-panel";
 import { ObjectivePanel } from "./phases/objective-panel";
 import { DiscoverPanel } from "./phases/discover-panel";
@@ -26,10 +26,12 @@ export function AdvancedView() {
         status={connection.status}
         info={connection.info}
         error={connection.error}
-        appName={SANDBOX_APP.name}
-        baseUrl={SANDBOX_APP.baseUrl}
-        version={SANDBOX_APP.version}
-        onConnect={() => void connection.connect()}
+        appName={s.target.name}
+        baseUrl={s.target.baseUrl}
+        version={s.target.version}
+        replicaNote={s.target.replicaNote}
+        picker={<TargetPicker targets={s.targets} value={s.target.id} onChange={s.setTarget} locked={Boolean(program)} />}
+        onConnect={() => void connection.connect(s.target)}
         onContinue={() => setPhase("objective")}
       />
     );
@@ -37,8 +39,9 @@ export function AdvancedView() {
     return (
       <ObjectivePanel
         key={program?.id ?? "new"}
-        objective={program?.objectiveText ?? DEFAULT_OBJECTIVE}
+        objective={program?.objectiveText ?? s.target.objective}
         context={s.context}
+        contextFields={s.target.contextFields}
         hasDiscovery={Boolean(program?.discovery?.endedAt)}
         plannerLabel={plannerLabel}
         busy={discovery.state.status === "running" || discovery.state.status === "planning"}
@@ -91,6 +94,7 @@ export function AdvancedView() {
         agentRuns={s.programRuns.filter((r) => r.actor === "agent")}
         ledger={s.programLedger}
         undoing={trust.undoing}
+        recording={s.recording}
         onRun={() => void act.run()}
         onStop={act.stop}
         onToggleUi={(v) => void s.toggleUi(v)}

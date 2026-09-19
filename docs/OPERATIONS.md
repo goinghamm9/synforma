@@ -70,7 +70,7 @@ route; a static host works with `npm run build:static`.
 - Discovery takes about ten seconds and drives the embedded CRM visibly.
 - Everything is per browser: two people opening the same URL each get their own state. Use Settings →
   Export / Import to move a program between browsers.
-- The 3D Work Graph needs WebGL.
+- The Work Graph's 3D view needs WebGL; the default process map does not.
 
 ## Environment variables
 
@@ -153,6 +153,7 @@ CHROMIUM_PATH=/path/to/chrome node verify/demo-trust.spec.js
 CHROMIUM_PATH=/path/to/chrome node verify/demo-trust-extra.spec.js
 CHROMIUM_PATH=/path/to/chrome node verify/employee.spec.js
 CHROMIUM_PATH=/path/to/chrome node verify/employee-guide.spec.js
+CHROMIUM_PATH=/path/to/chrome node verify/stimulus.spec.js
 ```
 
 | Script | What it exercises |
@@ -163,9 +164,60 @@ CHROMIUM_PATH=/path/to/chrome node verify/employee-guide.spec.js
 | `demo-trust-extra.spec.js` | Contract regeneration after a reload without contracts; the employee link; claims kept |
 | `employee.spec.js` | Employee view against the fixture program in `verify/fixtures/employee-seed.json`: guide flow, quiet decisions, intervention cards and feedback, completion, proficiency, Get It Done (deny → reopen → approve), recap, sensing pause, mobile |
 | `employee-guide.spec.js` | Planner badge, step ring on the current step, checklist advancing on typing, hesitation → recorded decision, assist completing a step, Get It Done approve path, start another run, abandon |
+| `graph.spec.js` | Work Graph process map: sample graph, lenses, search, 3D toggle, seeded fixture, Runs lens after a Mission Control run, mobile |
+| `stimulus.spec.js` | Science → stimulus analysis import, chart and table, disclaimer wording; Record screen control in the advanced Act panel |
+| `sandbox-billing.spec.js`, `sandbox-data.spec.js`, `sandbox-erp.spec.js` | Each replica application by hand: its workflow on both UI versions, validation, the two small workflows, reset, mobile |
+| `targets.spec.js [ids]` | The engine on every target application: discover → plan → Act on v1 → vendor update → Act on v2 (self-healing); prints a summary row per app |
+| `stimulus.spec.js` | The Science page's stimulus-analysis section: disclaimer wording, import of `verify/fixtures/stimulus-analysis.example.json` (synthetic values), list entry, small multiples, per-step table, persistence across a reload, removal, an invalid file rejected; then the advanced Act panel's Record screen button, present and either enabled or disabled with a stated reason (headless Chromium has no screen to share) |
 
 The advanced-view scripts seed `settings.demoView = "advanced"` in `localStorage` before loading, because
 the simple view auto-connects on load.
+
+## Stimulus analysis with TRIBE v2 (research)
+
+Synforma can import a **stimulus analysis**: the predicted cortical response of an *average subject* to
+the screen content a person saw during a Mission Control run, produced offline by Meta's TRIBE v2
+encoding model from a screen recording. It is a property of the screens, like a readability score.
+It is not a measurement of anyone's brain, attention or state, and the Science page says so in exactly
+the wording below wherever the data is shown. TRIBE v2 is licensed CC BY-NC 4.0, so the feature is
+labelled research use. **The browser never calls the model**; the Python bridge in
+`services/tribe-bridge` runs on the operator's machine and writes a JSON file that is imported by hand.
+
+Three steps:
+
+1. **Record.** Mission Control → Advanced → Act → *Record screen*. The browser's own dialog asks what to
+   share; nothing starts by itself and nothing is uploaded. Stopping downloads
+   `synforma-run-<runId>.webm` and `synforma-run-<runId>-steps.json` (the run's step windows as
+   `[{ stepId, title, startS, endS }]`, seconds from the start of the recording, clamped at 0). The
+   employee view has no recording control and never records anything.
+2. **Analyse offline.** `python -m tribe_bridge.analyze --video run.webm --steps run-steps.json --out analysis.json`
+   in `services/tribe-bridge`. The bridge predicts one sample per TR for the average subject, shifts the
+   predictions back by the hemodynamic lag, z-scores them across the recording and aggregates the
+   fsaverage5 vertices into six coarse systems.
+3. **Import.** Science → *Predicted cortical response to screens* → *Import analysis JSON*. The file is
+   validated with `parseStimulusAnalysis` (`lib/synforma/analysis/stimulus.ts`) before anything is
+   stored; it lives in this browser's `analyses` collection, is part of export/import/reset in Settings,
+   and is removed with the program it is linked to.
+
+The JSON contract (`StimulusAnalysisSchema`, `version: 1`):
+
+| Field | Meaning |
+|---|---|
+| `id`, `createdAt`, `runId?`, `programId?` | identity and, if known, the run and program the recording covers |
+| `source.fileName`, `durationS`, `sampleS`, `lagS` | the recording, its length, seconds between samples (one TR), the lag the predictions were shifted back by |
+| `model.name`, `checkpoint`, `subject: "average"`, `license` | which model produced it; the subject is always the average subject |
+| `systems[]`: `id` ∈ visual · language · attention · motor · default · other, `vertices`, `values[]` | mean predicted response per sample, z-scored across the recording, per coarse cortical system; every system has the same number of samples |
+| `steps[]`: `stepId`, `title`, `startS`, `endS` | the step windows from the steps file |
+| `disclaimer` | fixed wording the bridge writes; the UI shows the same wording verbatim |
+
+Disclaimer, shown verbatim in the UI (`DISCLAIMER` in `lib/synforma/analysis/stimulus.ts`):
+
+> Predicted response of an average subject's cortex to the recorded screen content (TRIBE v2 encoding
+> model). A property of the screens, not a measurement of any person. Research use; the model is
+> licensed CC BY-NC 4.0.
+
+Never describe this data as what a person's brain is doing, or as engagement, emotion or a signature of
+anyone. The stored analysis contains no frames of the recording and nothing about the person who made it.
 
 ## Privacy model
 

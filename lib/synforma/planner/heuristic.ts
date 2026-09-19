@@ -15,6 +15,7 @@ import type {
   WorkflowStep,
 } from "../types";
 import type {
+
   AssistanceContent,
   ComposeAssistanceInput,
   DiagnoseInput,
@@ -23,6 +24,34 @@ import type {
   ParseObjectiveInput,
   Planner,
 } from "./types";
+
+/** Verbs that end a form. Row-level destructive controls ("Remove column 2", "Delete line") are commits but never the workflow's outcome. */
+const TERMINAL_COMMIT_RE = /^(create|submit|save|issue|confirm|order|place|send|approve|publish|finish|complete|done|book|pay|apply|generate|add)\b/i;
+const ROW_LEVEL_RE = /\b(line|row|column|item)\b\s*\d*$|^(remove|delete|clear|reset|wipe)\b/i;
+
+/** The button that ends a form on this screen, if any: a terminal verb first, else any commit that is not a row-level control. */
+export function terminalCommit(actions: SemanticElement[], parsed?: ParsedObjective): SemanticElement | undefined {
+  const commits = actions.filter((a) => a.role === "button" && a.commit && !a.inDialog && !a.disabled);
+  const destructiveObjective = parsed ? /\b(delete|remove|archive|cancel)\b/i.test(parsed.targetBehavior ?? parsed.title ?? "") : false;
+  return (
+    commits.find((a) => TERMINAL_COMMIT_RE.test(a.name) && !ROW_LEVEL_RE.test(a.name)) ??
+    commits.find((a) => !ROW_LEVEL_RE.test(a.name)) ??
+    (destructiveObjective ? commits[0] : undefined)
+  );
+}
+
+/** Acknowledgement boxes a person must tick before a commit ("I confirm…", "I understand…", policy declarations). */
+export const CONSENT_RE = /\b(confirm|understand|agree|acknowledg|policy|declar|certif|attest|not split|accept)/i;
+
+/** The object a route names, singular, from the segment before ":id" ("/payments/:id" → "payment"). */
+export function routeNoun(route: string): string | undefined {
+  const parts = route.split("/").filter(Boolean);
+  const i = parts.indexOf(":id");
+  const seg = i > 0 ? parts[i - 1] : parts[parts.length - 1];
+  if (!seg || seg.startsWith(":")) return undefined;
+  const words = seg.replace(/[-_]+/g, " ").toLowerCase();
+  return words.replace(/ies$/, "y").replace(/(s)es$/, "$1").replace(/([^s])s$/, "$1");
+}
 
 /**
  * HeuristicPlanner — deterministic reasoning without any LLM.
@@ -87,6 +116,7 @@ export function parseRequirements(text: string): Requirement[] {
     }
     if (quoted.length) acceptedValues = [...(acceptedValues ?? []), ...quoted];
     const within = /within\s+(\d+)\s+days?/i.exec(text);
+    const atLeast = /at least\s+(\d+)\s+days?/i.exec(text);
     const fieldHint = text.replace(/\([^)]*\)/g, "").replace(/\b(a|an|the|named|at least one|recorded|scheduled|set|must|be|is|has|have|or|of)\b/gi, " ").replace(/\s+/g, " ").trim();
     const kind: Requirement["kind"] = /\b(without|never|must not|do not|restricted|confidential|policy)\b/i.test(text) ? "policy" : /\b(adoption|% |percent|sustained)\b/i.test(text) ? "outcome" : "field";
     return {
@@ -100,9 +130,42 @@ export function parseRequirements(text: string): Requirement[] {
         acceptedValues,
         rejectedValues,
         withinDays: within ? Number(within[1]) : undefined,
+        atLeastDays: atLeast ? Number(atLeast[1]) : undefined,
       },
     };
   });
+}
+
+/** Split a context key or a label into lowercase word tokens ("customerNote" → ["customer", "note"]). */
+function wordTokens(text: string): string[] {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 2 && !/^(the|a|an|to|of|for|and|or|in|on|at|by)$/.test(t));
+}
+
+/**
+ * The work-context value that belongs to a field, by meaning rather than by an
+ * exact key: every token of the context key must appear in the field's name or
+ * in the requirement's hint ("customerNote" ↔ "Note to customer",
+ * "deliveryDate" ↔ "Requested delivery date"). Ties go to the key that
+ * explains more of the name. `entryUrl` never fills a field.
+ */
+export function contextValueFor(context: Record<string, string>, hints: (string | undefined)[]): string | undefined {
+  const nameTokens = new Set(hints.filter((h): h is string => Boolean(h)).flatMap(wordTokens));
+  if (!nameTokens.size) return undefined;
+  let best: { key: string; matched: number; score: number } | null = null;
+  for (const [key, value] of Object.entries(context)) {
+    if (!value || key === "entryUrl" || key.includes(":")) continue;
+    const keyTokens = wordTokens(key);
+    if (!keyTokens.length) continue;
+    const matched = keyTokens.filter((t) => nameTokens.has(t) || [...nameTokens].some((n) => n.startsWith(t) || t.startsWith(n))).length;
+    const score = matched / keyTokens.length;
+    if (score < 0.6) continue;
+    if (!best || score > best.score || (score === best.score && matched > best.matched)) best = { key, matched, score };
+  }
+  return best ? context[best.key] : undefined;
 }
 
 export class HeuristicPlanner implements Planner {
@@ -195,11 +258,15 @@ export class HeuristicPlanner implements Planner {
     const entryRoute = ancestors.length ? ancestors[ancestors.length - 1] : undefined;
     if (entryRoute) {
       const entryIsRecord = entryRoute.route.includes(":id");
-      const navActions: Action[] = [{ kind: "navigate", url: entryRoute.url, label: entryIsRecord ? `Open the ${parsed.entryHints[0] ?? "entry"} record` : `Open ${entryRoute.page.heading || entryRoute.route}` }];
+      const recordNoun = parsed.entryHints[0] ?? (entryIsRecord ? routeNoun(entryRoute.route) : undefined);
+      // A record page often has a value for a heading ("$120.00", "INV-7007"); name the step after the record type instead.
+      const headingIsValue = !entryRoute.page.heading || /^[$€£¥]?\s?[\d.,]+/.test(entryRoute.page.heading) || /^[A-Z]{1,5}-\d+/.test(entryRoute.page.heading);
+      const openLabel = entryIsRecord ? `Open the ${recordNoun ?? "entry"} record` : `Open ${headingIsValue ? entryRoute.route : entryRoute.page.heading}`;
+      const navActions: Action[] = [{ kind: "navigate", url: entryRoute.url, label: openLabel }];
       steps.push({
         id: mkId(),
         index: steps.length,
-        title: `Open the ${parsed.entryHints[0] ? `${parsed.entryHints[0]} record` : entryRoute.page.heading || "record"}`,
+        title: recordNoun ? `Open the ${recordNoun} record` : !entryIsRecord ? `Open ${headingIsValue ? "the start page" : entryRoute.page.heading}` : headingIsValue ? `Open the record (${entryRoute.route})` : `Open the ${entryRoute.page.heading}`,
         description: `Navigate to ${entryRoute.route}.`,
         screenId: entryRoute.screenNodeId,
         route: entryRoute.route,
@@ -295,12 +362,32 @@ export class HeuristicPlanner implements Planner {
         upsertNode(graph, { id: reqNode, type: "requirement", label: r.text, status: "confirmed", confidence: 1, data: { kind: r.kind, judgment: r.judgment } });
         upsertEdge(graph, nodeId("field", s.route, m.field.key), reqNode, "fulfills", `${Math.round(m.score * 100)}%`, m.score);
       }
+      // A choice the objective names outright ("authenticated users", "Office equipment"): set the select that offers it,
+      // even when the requirement was mapped to another field on this screen.
+      for (const f of s.page.fields) {
+        if ((f.role !== "combobox" && f.role !== "radio") || !f.options?.length) continue;
+        if (actions.some((a) => a.target === f.key)) continue;
+        for (const r of requirements) {
+          const opt = f.options.find((o) => o.length >= 4 && !/^(select|choose|--)/i.test(o) && new RegExp(`\\b${o.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(r.text));
+          if (opt) {
+            const rev = revealedByName(f.key);
+            if (rev && !reveals.includes(rev)) {
+              reveals.push(rev);
+              actions.push(revealAction(s, rev));
+            }
+            actions.push(fillAction(f, opt, `${f.name} ← requirement ${r.id.replace("r", "")} (${opt})`));
+            upsertEdge(graph, nodeId("field", s.route, f.key), nodeId("requirement", r.id), "fulfills", opt, 0.6);
+            break;
+          }
+        }
+      }
       const nextBtn = s.page.actions.find((a) => a.role === "button" && NEXT_RE.test(a.name) && !a.commit);
-      const commitBtn = s.page.actions.find((a) => a.role === "button" && a.commit && !a.inDialog);
+      const commitBtn = terminalCommit(s.page.actions, parsed);
       const dialogChild =
         chain.find((c) => c.page.dialogs.length && (c.parentId === s.id || c.id === s.parentId)) ??
         states.find((c) => c.page.dialogs.length && (c.parentId === s.id || c.id === s.parentId));
-      const isLast = i === formStates.length - 1;
+      // The last form state is the one that ends the form: a terminal commit and no way forward.
+      const isLast = i === formStates.length - 1 || (Boolean(commitBtn) && !nextBtn);
       if (nextBtn && !isLast) actions.push({ kind: "click", target: nextBtn.key, targetName: nextBtn.name, targetRole: "button", targetCommit: false, targetRegion: nextBtn.region, label: `Click ${nextBtn.name}` });
 
       const judgment = reqsHere.some((r) => r.judgment);
@@ -332,6 +419,10 @@ export class HeuristicPlanner implements Planner {
       }
       if (isLast && commitBtn) {
         const finalActions: Action[] = [...actions];
+        // Consent gates: unchecked acknowledgement boxes on the commit screen are part of the workflow.
+        for (const cb of s.page.fields.filter((f) => f.role === "checkbox" && !f.checked && CONSENT_RE.test(f.name))) {
+          finalActions.push({ kind: "check", target: cb.key, targetName: cb.name, targetRole: "checkbox", value: "true", label: `Confirm "${cb.name}"` });
+        }
         if (dialogChild) {
           const dismiss = dialogChild.page.actions.find((a) => a.inDialog && a.role === "button" && !a.commit && DISMISS_RE.test(a.name)) ?? dialogChild.page.actions.find((a) => a.inDialog && a.role === "button" && !a.commit);
           if (dismiss) finalActions.push({ kind: "click", target: dismiss.key, targetName: dismiss.name, targetRole: "button", label: `Acknowledge "${dialogChild.page.dialogs[0]}"` });
@@ -554,6 +645,10 @@ export function requirementFieldScore(r: Requirement, f: SemanticElement): numbe
   }
   if (f.role === "checkbox" && r.expectation?.acceptedValues?.some((v) => similarity(v, f.name) > 0.8)) s += 0.5;
   if (f.role === "checkbox" && f.description) s += 0.4 * similarity(hint, f.description);
+  // An acknowledgement box ("I understand …") repeats the policy's words but holds no data: it is a gate, not the requirement's field.
+  if ((f.role === "checkbox" || f.role === "switch") && CONSENT_RE.test(f.name) && /^(i |we )/i.test(f.name)) s *= 0.3;
+  // "… enabled" / "… switched on" names a toggle.
+  if (f.role === "switch" && /\b(enabled|switched on|turned on|on from the start|activated)\b/i.test(r.text)) s += 0.25;
   // Token overlap between requirement keywords and field tokens.
   const kw = new Set(r.keywords);
   const ft = tokenize(fieldText);
@@ -590,13 +685,20 @@ function ancestorsOf(state: DiscoveredState, all: DiscoveredState[]): Discovered
 }
 
 function revealAction(s: DiscoveredState, name: string): Action {
-  const el = s.page.actions.find((a) => a.name === name) ?? s.page.elements.find((e) => e.name === name);
+  const el = s.page.actions.find((a) => a.name === name) ?? s.page.fields.find((f) => f.name === name) ?? s.page.elements.find((e) => e.name === name);
+  if (el && (el.role === "switch" || el.role === "checkbox")) return { kind: "check", target: el.key, targetName: name, targetRole: el.role, value: "true", label: `Turn on ${name}` };
   return { kind: "expand", target: el?.key, targetName: name, targetRole: el?.role === "tab" ? "tab" : "button", label: `Expand ${name}` };
 }
 
 function fillAction(f: SemanticElement, value: string, label: string): Action {
   const kind: Action["kind"] = f.role === "combobox" || f.role === "radio" ? "select" : f.role === "checkbox" || f.role === "switch" ? "check" : "type";
   return { kind, target: f.key, targetName: f.name, targetRole: f.role, targetRegion: f.region, value, label };
+}
+
+/** A context value can only go into a choice field when it is one of the choices. */
+function isUsableValue(value: string, field?: SemanticElement): boolean {
+  if (!field?.options?.length) return true;
+  return field.options.some((o) => o.toLowerCase() === value.toLowerCase());
 }
 
 /** Resolve a templated value ({{req:r1}} / {{field:key}}) against run context and sensible defaults. */
@@ -619,8 +721,8 @@ export function resolveValue(
   const fieldMatch = /^\{\{field:(.+)\}\}$/.exec(v);
   if (reqMatch) {
     const r = requirements.find((x) => x.id === reqMatch[1]);
-    const fromContext = context[reqMatch[1]] ?? (r ? context[r.expectation?.fieldHint ?? ""] : undefined);
-    if (fromContext) return fromContext;
+    const fromContext = context[reqMatch[1]] ?? (r ? context[r.expectation?.fieldHint ?? ""] : undefined) ?? contextValueFor(context, [field?.name, r?.expectation?.fieldHint]);
+    if (fromContext && isUsableValue(fromContext, field)) return fromContext;
     if (!r) return "";
     const accepted = r.expectation?.acceptedValues ?? [];
     const rejected = (r.expectation?.rejectedValues ?? []).map((x) => x.toLowerCase());
@@ -637,6 +739,7 @@ export function resolveValue(
     }
     if (field?.role === "checkbox") return "true";
     const dateLike = field?.inputType === "date" || /date/i.test(field?.name ?? "");
+    if (dateLike && r.expectation?.atLeastDays) return isoDate(r.expectation.atLeastDays + 4);
     if (dateLike && r.expectation?.withinDays) return isoDate(Math.max(1, Math.min(7, r.expectation.withinDays - 7)));
     if (dateLike) return isoDate(7);
     if (/next step|next action|follow/i.test(field?.name ?? "") || /next step/i.test(r.text)) return context.nextStep ?? "Discovery call with the decision-maker";
@@ -646,13 +749,17 @@ export function resolveValue(
     const key = fieldMatch[1];
     if (context[key]) return context[key];
     const name = (field?.name ?? key).toLowerCase();
-    for (const [k, val] of Object.entries(context)) if (name.includes(k.toLowerCase())) return val;
-    if (field?.inputType === "date" || /date/.test(name)) return context.closeDate ?? isoDate(30);
-    if (field?.inputType === "number" || /amount|value/.test(name)) return context.amount ?? "48000";
+    const fromContext = contextValueFor(context, [field?.name ?? key]);
+    if (fromContext && isUsableValue(fromContext, field)) return fromContext;
+    if (field?.value && field.role !== "combobox") return field.value; // keep what the application prefilled
+    if (field?.inputType === "date" || /date/.test(name)) return isoDate(30);
+    if (field?.inputType === "number" || /amount|value|quantity|price/.test(name)) return "100";
     if (field?.options?.length) {
       const opts = field.options.filter((o) => o && !/^(select|choose|--)/i.test(o));
-      return context.stage && opts.some((o) => o.toLowerCase() === context.stage.toLowerCase()) ? context.stage : (opts[0] ?? "");
+      const preferred = Object.values(context).find((v) => opts.some((o) => o.toLowerCase() === v.toLowerCase()));
+      return preferred ?? opts[0] ?? "";
     }
+    if (field?.role === "textarea") return "Entered by Synforma on behalf of the person.";
     return field?.value || "Synforma";
   }
   return v;

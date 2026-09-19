@@ -16,6 +16,16 @@ never automated, conflicting sources stop autonomy, no fabricated statistics, ci
 - The language-model planner is optional (Claude or Gemini, server-side, schema-validated). The
   heuristic planner is the default and deliberately simple.
 
+## Demo library — this release
+
+Four target applications (Meridian CRM, Ledgerline Billing, Nimbus Data Console, Atlas ERP), a target
+picker and presenter notes in Mission Control, a demo-applications gallery at `/sandbox`, and
+`verify/targets.spec.js` as the zero-configuration regression across all of them. Three run 5/5 on both
+UI versions. Known gap: the data console's row-level-security switch reaches the engine without an
+accessible name, so the requirement lands on the review acknowledgement instead and the policy fields
+stay unmapped; the fix is in the accessible-name computation (label-for on switches) and in mapping
+multi-word requirements, not in the application.
+
 ## Phase 1 — this release: simplify and host
 
 - Simplification: the two largest UI files split into focused modules; runner flags replaced by one

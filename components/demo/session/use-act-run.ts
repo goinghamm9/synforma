@@ -8,6 +8,7 @@ import type { ActionClass, ApprovalRequest, Run, RunEvent, TrustDecision } from 
 import { shortId } from "@/lib/utils";
 import type { ChangeRecord, LogLevel, UiVariant } from "../types";
 import { readSandboxUiVariant } from "../demo-prefs";
+import type { TargetApp } from "@/lib/synforma/targets";
 import type { ActState } from "../phases/act-panel";
 import type { ConnectionApi } from "./use-connection";
 import { INITIAL_ACT, appendLog, errorMessage, mkLine } from "./helpers";
@@ -25,6 +26,7 @@ export interface ActRunApi {
 }
 
 interface Options {
+  target: TargetApp;
   connection: ConnectionApi;
   programId: string | null;
   /** Fallback work context when the program carries none. */
@@ -35,7 +37,7 @@ interface Options {
 }
 
 /** The agent's Act run: policy-gated execution with approval, action log, change list and ledger provenance. */
-export function useActRun({ connection, programId, context, applyRegroundings, setUiVariant }: Options): ActRunApi {
+export function useActRun({ connection, programId, context, applyRegroundings, setUiVariant, target }: Options): ActRunApi {
   const { getDriver, driverLogSinkRef, abortRef, hideOverlays, syncUrl } = connection;
   const approvalResolver = React.useRef<((d: "granted" | "denied") => void) | null>(null);
   const approvalRequest = React.useRef<ApprovalRequest | null>(null);
@@ -77,7 +79,7 @@ export function useActRun({ connection, programId, context, applyRegroundings, s
     const { workflow, parsed } = prog;
     const runId = shortId("run");
     const startedAt = Date.now();
-    const variant = readSandboxUiVariant();
+    const variant = readSandboxUiVariant(target.uiVersionKey);
     setUiVariant(variant);
     const run: Run = { id: runId, programId: prog.id, workflowId: workflow.id, actor: "agent", mode: "act", startedAt, interventionIds: [], uiVariant: variant, requirementsMet: [], regroundings: 0 };
     s.addRun(run);
@@ -213,7 +215,7 @@ export function useActRun({ connection, programId, context, applyRegroundings, s
       store.addAudit({ actor: "agent", action: aborted ? "Run stopped by operator" : "Run failed", runId, programId: prog.id, detail: aborted ? undefined : errorMessage(e) });
       setAct((a) => ({ ...a, status: aborted ? "stopped" : "error", error: aborted ? null : errorMessage(e), endedAt, currentStepId: null }));
     }
-  }, [abortRef, applyRegroundings, context, driverLogSinkRef, getDriver, hideOverlays, programId, pushActLog, setUiVariant, syncUrl]);
+  }, [abortRef, applyRegroundings, context, driverLogSinkRef, getDriver, hideOverlays, programId, pushActLog, setUiVariant, syncUrl, target]);
 
   const stop = React.useCallback(() => {
     abortRef.current?.abort();

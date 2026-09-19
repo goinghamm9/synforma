@@ -44,7 +44,12 @@ const oneLine = (t) => t.replace(/\s*\n\s*/g, " | ");
     // 1. Default view + auto-connect
     await page.getByTestId("simple-view").waitFor({ timeout: 60000 });
     const view0 = await page.getByTestId("demo-view-toggle").getAttribute("data-view");
-    const s0 = await store(page);
+    // The store persists on its first write (the auto-connect audit entry); give a slow connect a moment.
+    let s0 = await store(page);
+    for (let i = 0; i < 60 && !(s0.settings || {}).demoView; i++) {
+      await page.waitForTimeout(250);
+      s0 = await store(page);
+    }
     record("fresh localStorage → simple view is the default", view0 === "simple" && (s0.settings || {}).demoView === "simple" && (await page.locator('nav[aria-label="Phases"]').count()) === 0, `toggle=${view0} · settings.demoView=${(s0.settings || {}).demoView} · phase rail hidden`);
     await page.getByTestId("simple-connect-status").filter({ hasText: "Connected" }).waitFor({ timeout: 30000 });
     const connectText = await page.getByTestId("simple-connect").innerText();

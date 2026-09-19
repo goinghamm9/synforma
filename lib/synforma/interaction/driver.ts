@@ -50,6 +50,19 @@ export class IframeDriver {
     return this.iframe.contentWindow;
   }
 
+  /** What the frame holds right now; for diagnostics when a page cannot be read. `accessible` is false for a cross-origin document. */
+  frameState(): { accessible: boolean; url: string | null; readyState: string | null; bodyChildren: number | null } {
+    const doc = this.doc;
+    if (!doc) return { accessible: false, url: null, readyState: null, bodyChildren: null };
+    let url: string | null = null;
+    try {
+      url = doc.location?.href ?? null;
+    } catch {
+      url = null;
+    }
+    return { accessible: true, url, readyState: doc.readyState, bodyChildren: doc.body ? doc.body.childElementCount : null };
+  }
+
   currentUrl(): string {
     const w = this.win;
     if (!w) return "";
@@ -91,8 +104,28 @@ export class IframeDriver {
       if (snap.page.elements.length > 0 || snap.page.headings.length > 0) break;
       await sleep(250);
     }
+    await this.waitForStableContent();
     this.events.onNavigate?.(this.currentUrl());
     return this.snapshot().page;
+  }
+
+  /**
+   * Client-rendered applications keep adding controls after the first paint (skeleton → data). Wait,
+   * briefly, until the number of interactive elements stops growing so a snapshot describes the real
+   * screen rather than its loading state.
+   */
+  async waitForStableContent(maxMs = 1800, stepMs = 200): Promise<void> {
+    let previous = -1;
+    let stable = 0;
+    for (let waited = 0; waited < maxMs; waited += stepMs) {
+      const count = this.snapshot().page.elements.length;
+      if (count === previous && count > 0) {
+        stable += 1;
+        if (stable >= 2) return;
+      } else stable = 0;
+      previous = count;
+      await sleep(stepMs);
+    }
   }
 
   /** Resolve when the DOM has been quiet for `quiet` ms, or after `timeout` ms. */
@@ -196,6 +229,15 @@ export class IframeDriver {
     }
     if (action.kind === "wait") {
       await this.waitForSettle(Number(action.value ?? 800));
+      return { ok: true, action, page: this.snapshot().page, durationMs: performance.now() - started };
+    }
+    if (action.kind === "press") {
+      const doc = this.doc;
+      if (!doc) return fail("no document");
+      const key = action.value ?? "Escape";
+      const target = (doc.activeElement as HTMLElement | null) ?? doc.body;
+      for (const type of ["keydown", "keyup"]) target.dispatchEvent(new KeyboardEvent(type, { key, code: key, bubbles: true, cancelable: true }));
+      await this.waitForSettle(400);
       return { ok: true, action, page: this.snapshot().page, durationMs: performance.now() - started };
     }
 

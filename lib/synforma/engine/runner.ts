@@ -2,7 +2,7 @@ import type { IframeDriver } from "../interaction/driver";
 import { ground } from "../interaction/grounding";
 import { generalizeRoute } from "../interaction/snapshot";
 import { similarity } from "../interaction/text";
-import { resolveValue } from "../planner/heuristic";
+import { anchorMatches, CONSENT_RE, resolveValue } from "../planner/heuristic";
 import { FULL_CAPABILITIES, type RunCapabilities } from "../planner/types";
 import type {
   Action,
@@ -172,7 +172,23 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       }
       // Resolve templated values against the live field.
       if (action.kind === "type" || action.kind === "select" || action.kind === "check") {
-        const field = findField(page, action, caps);
+        let field = findField(page, action, caps);
+        if (!field && caps.expand && caps.synonyms) {
+          // A vendor update may have moved the field behind a tab or a disclosure: open the one whose name matches the field or the step.
+          const byName = revealCandidate(page, [action.targetName ?? "", step.title]);
+          // Try the best-named opener first, then the few remaining closed tabs (tabs are reversible and never commit).
+          const openers = [byName, ...page.actions.filter((a) => a.role === "tab" && a.expanded !== true && !a.disabled && a.key !== byName?.key)].filter((a): a is SemanticElement => Boolean(a)).slice(0, 5);
+          for (const opener of openers) {
+            const opened = await perform({ kind: "click", target: opener.key, targetName: opener.name, targetRole: opener.role, targetCommit: false, label: `Open ${opener.role === "tab" ? "tab" : "section"} ${opener.name}` }, step);
+            if (!opened.ok || !opened.page) continue;
+            page = opened.page;
+            field = findField(page, action, caps);
+            if (field) {
+              hooks.onEvent("action_regrounded", { from: action.targetName, to: field.key, toName: field.name, change: { type: "ui_element_moved", screen: step.route ?? null, affectedStep: step.id, detectedAt: Date.now(), risk: "low", via: opener.name } }, step.id, `Found "${action.targetName}" behind "${opener.name}"`);
+              break;
+            }
+          }
+        }
         if (!field) {
           if (!caps.expand || !caps.synonyms) {
             hooks.onEvent("hesitation", { simulated: true, reason: `field "${action.targetName}" not visible` }, step.id, `Could not find "${action.targetName}"`);
@@ -204,6 +220,11 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
           }
           hooks.onEvent("approval_granted", {}, step.id, "Approval granted");
         }
+      }
+      // A shorter wizard: the screen already holds the commit control and no forward control, so this "Next" has nothing to do.
+      if (action.kind === "click" && WIZARD_NAV_RE.test(action.targetName ?? "") && !page.actions.some((a) => WIZARD_NAV_RE.test(a.name) && !a.disabled) && page.actions.some((a) => a.commit && !a.disabled && a.role === "button")) {
+        hooks.onEvent("note", { skippedNavigation: action.targetName, reason: "commit control already on screen" }, step.id, `"${action.targetName}" is no longer needed here: the commit control is already on this screen`);
+        continue;
       }
       // A menu item can only be reached through its menu: if none is open, open the popup buttons first.
       if (action.kind === "click" && action.targetRole === "menuitem" && !page.actions.some((a) => a.role === "menuitem")) {
@@ -250,6 +271,15 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
         driver.snapshot();
         r = await perform(action, step);
       }
+      if (!r.ok && action.targetRole === "menuitem" && driver.snapshot().page.actions.some((a) => a.role === "menuitem")) {
+        // Leave no menu open behind a failure: it would hide the rest of the screen from the next action.
+        await perform({ kind: "press", value: "Escape", label: "Close menu" }, step);
+      }
+      if (!r.ok && action.kind === "click" && WIZARD_NAV_RE.test(action.targetName ?? "") && page.actions.some((a) => a.commit && !a.disabled)) {
+        // The wizard got shorter: this screen already holds the commit control, so the missing "Next" is not needed.
+        hooks.onEvent("note", { skippedNavigation: action.targetName, reason: "commit control already on screen" }, step.id, `"${action.targetName}" is no longer needed here: the commit control is already on this screen`);
+        continue;
+      }
       if (!r.ok) {
         hooks.onEvent("action_failed", { action: action.label, error: r.error }, step.id, r.error);
         if (isEssential(action, step)) {
@@ -261,6 +291,21 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       }
       page = r.page ?? driver.snapshot().page;
 
+      // Validation after the commit itself (an unticked acknowledgement, a field the review step still wants): repair once and commit again.
+      if (action.kind === "click" && page.alerts.length && step.commit && isCommitAction(action, step) && caps.fixValidation) {
+        hooks.onEvent("validation_error", { alerts: page.alerts, atCommit: true }, step.id, page.alerts.join(" / "));
+        let fixed = false;
+        for (const cb of page.fields.filter((f) => f.role === "checkbox" && !f.checked && (f.invalid || CONSENT_RE.test(f.name)))) {
+          const c = await perform({ kind: "check", target: cb.key, targetName: cb.name, targetRole: "checkbox", value: "true", label: `Confirm "${cb.name}"` }, step);
+          fixed = fixed || c.ok;
+        }
+        page = driver.snapshot().page;
+        fixed = (await repairValidation(page, step, requirements, context, perform)) || fixed;
+        if (fixed) {
+          const again = await perform(action, step);
+          page = again.page ?? driver.snapshot().page;
+        }
+      }
       // Validation feedback after a click that did not move us on.
       if (action.kind === "click" && page.alerts.length && !step.commit) {
         hooks.onEvent("validation_error", { alerts: page.alerts }, step.id, page.alerts.join(" / "));
@@ -279,6 +324,23 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       }
       await sleep(40);
     }
+    // A form that jumped back to an earlier screen (a late validation) leaves the next step on the wrong screen: move forward until the step's own screen is back.
+    if (!step.commit && step.anchor?.heading) {
+      for (let i = 0; i < 6; i++) {
+        const now = driver.snapshot().page;
+        const nextStep = steps[steps.indexOf(step) + 1];
+        const target = nextStep?.anchor?.heading;
+        if (!target || anchorMatches({ heading: target }, now.url, now.heading, now.headings, now.dialogs)) break;
+        const fwd = now.actions.find((a) => a.role === "button" && WIZARD_NAV_RE.test(a.name) && !a.disabled);
+        if (!fwd) break;
+        const r = await perform({ kind: "click", target: fwd.key, targetName: fwd.name, targetRole: "button", targetCommit: false, label: `Move forward (${fwd.name})` }, step);
+        if (!r.ok) break;
+        if (r.page?.alerts.length) {
+          const fixed = await repairValidation(r.page, step, requirements, context, perform);
+          if (!fixed) break;
+        }
+      }
+    }
     hooks.onEvent("step_completed", { title: step.title }, step.id, step.title);
     hooks.onStep?.(step, "completed");
   }
@@ -292,7 +354,14 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
   const finalPage = driver.snapshot().page;
   const requirementsMet = verifyRequirements(finalPage, requirements);
   const outcomeUrl = finalPage.url;
-  const onOutcome = workflow.outcomeRoutePattern ? generalizeRoute(finalPage.url) === workflow.outcomeRoutePattern : finalPage.definitions.length >= 3;
+  const commitRoute = [...steps].reverse().find((s) => s.commit)?.route ?? null;
+  const finalRoute = generalizeRoute(finalPage.url);
+  const leftTheForm = commitRoute ? finalRoute !== commitRoute : true;
+  const successText = [...finalPage.alerts, finalPage.heading, ...finalPage.headings].join(" ");
+  const onOutcome =
+    (workflow.outcomeRoutePattern ? finalRoute === workflow.outcomeRoutePattern : false) ||
+    (leftTheForm && finalPage.definitions.length >= 3) ||
+    (leftTheForm && /\b(created|issued|submitted|saved|sent|approved|completed|success)/i.test(successText));
   hooks.onEvent("outcome_verified", { url: outcomeUrl, onOutcomeScreen: onOutcome, requirementsMet, labels: finalPage.definitions.slice(0, 24).map((d) => d.label) }, undefined, `Outcome screen ${onOutcome ? "reached" : "not recognized"}; ${requirementsMet.length}/${requirements.length} requirements verified`);
   if (!onOutcome) {
     hooks.onEvent("run_failed", { reason: "outcome screen not reached", url: outcomeUrl });
@@ -324,6 +393,22 @@ function isEssential(a: Action, step: WorkflowStep): boolean {
   return false;
 }
 
+const WIZARD_NAV_RE = /^(next|continue|proceed)\b/i;
+
+/** A closed tab or collapsed section whose name matches one of the hints; used to find a field a vendor update moved. */
+function revealCandidate(page: PageModel, hints: string[]): SemanticElement | null {
+  const openers = page.actions.filter((a) => !a.commit && !a.disabled && ((a.role === "tab" && a.expanded !== true) || (a.role === "button" && a.expanded === false)));
+  let best: { el: SemanticElement; score: number } | null = null;
+  for (const el of openers) {
+    for (const hint of hints) {
+      if (!hint) continue;
+      const score = similarity(el.name, hint);
+      if (score > 0.45 && (!best || score > best.score)) best = { el, score };
+    }
+  }
+  return best?.el ?? null;
+}
+
 function findField(page: PageModel, action: Action, caps: RunCapabilities): SemanticElement | null {
   if (action.target) {
     const exact = page.fields.find((f) => f.key === action.target);
@@ -348,9 +433,19 @@ async function repairValidation(
   let fixedAny = false;
   const invalid = page.fields.filter((f) => f.invalid);
   for (const f of invalid) {
+    if (f.role === "checkbox" || f.role === "switch") {
+      const c = await perform({ kind: "check", target: f.key, targetName: f.name, targetRole: f.role, value: "true", label: `Confirm "${f.name}"` }, step);
+      fixedAny = fixedAny || c.ok;
+      continue;
+    }
     let value = "";
     const alertText = page.alerts.join(" ");
-    if (/yyyy-mm-dd|date/i.test(alertText) || /date/i.test(f.name)) {
+    if (/already exists|already taken|already in use|must be unique|is taken|duplicate name/i.test(alertText) && f.value) {
+      // A name the application already has: keep the person's wording, add a counter.
+      const m = /^(.*?)(?:[_ -](\d+))?$/.exec(f.value);
+      const n = m && m[2] ? Number(m[2]) + 1 : 2;
+      value = /[_]/.test(f.value) || !/\s/.test(f.value) ? `${m ? m[1] : f.value}_${n}` : `${m ? m[1] : f.value} ${n}`;
+    } else if (/yyyy-mm-dd|date/i.test(alertText) || /date/i.test(f.name)) {
       const d = new Date();
       d.setDate(d.getDate() + 7);
       value = d.toISOString().slice(0, 10);

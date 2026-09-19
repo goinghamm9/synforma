@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useSynforma } from "@/lib/synforma/store";
 import { IframeDriver } from "@/lib/synforma/interaction/driver";
-import { SANDBOX_APP } from "@/lib/synforma/demo";
+import type { TargetApp } from "@/lib/synforma/targets";
 import type { ConnectionInfo, OverlayTarget } from "../types";
 import { errorMessage, summarizePage } from "./helpers";
 
@@ -27,7 +27,7 @@ export interface ConnectionApi {
   /** Fade the agent cursor and highlight out in place once the engine is done with the iframe. */
   hideOverlays: () => void;
   /** Load the sandbox home page and take one semantic snapshot; `silent` skips the audit entry (reconnect after reload). */
-  connect: (silent?: boolean) => Promise<void>;
+  connect: (target: TargetApp, silent?: boolean) => Promise<void>;
   /** Re-read the iframe's URL into state (after the engine navigated). */
   syncUrl: () => void;
   /** Navigate the sandbox to a URL (e.g. the created record). */
@@ -90,18 +90,29 @@ export function useConnection(): ConnectionApi {
     };
   }, []);
 
-  const connect = React.useCallback(async (silent = false) => {
+  const connect = React.useCallback(async (target: TargetApp, silent = false) => {
     const driver = driverRef.current;
     if (!driver) return;
     setConnection((c) => ({ ...c, status: "connecting", error: null }));
     try {
-      const page = await driver.goto(SANDBOX_APP.baseUrl);
-      if (page.fingerprint === "empty" || page.elements.length === 0) throw new Error("The application did not render anything Synforma could read.");
+      let page = await driver.goto(target.baseUrl);
+      // A cold server (first request after a quiet period on serverless hosting) can take longer than the
+      // driver's load window. Keep reading for a while before giving up.
+      for (let waited = 0; (page.fingerprint === "empty" || page.elements.length === 0) && waited < 12_000; waited += 500) {
+        await new Promise((r) => setTimeout(r, 500));
+        page = driver.snapshot().page;
+      }
+      if (page.fingerprint === "empty" || page.elements.length === 0) {
+        const st = driver.frameState();
+        if (!st.accessible) throw new Error(`The frame cannot be read: ${target.baseUrl} loaded from another origin (a login page or a redirect). Open it in a new tab to see what it shows.`);
+        if (st.bodyChildren === 0) throw new Error(`The application returned a blank page at ${st.url ?? target.baseUrl}.`);
+        throw new Error(`The application did not render anything Synforma could read within the time limit (frame ${st.readyState ?? "unknown"}, ${st.bodyChildren ?? 0} elements at ${st.url ?? target.baseUrl}). The first load on a cold server can take longer: try again.`);
+      }
       const info = summarizePage(page);
       setConnection({ status: "connected", info, error: null });
       setCurrentUrl(driver.currentUrl());
       if (!silent) {
-        useSynforma.getState().addAudit({ actor: "admin", action: "Connected application", target: SANDBOX_APP.name, detail: `${info.actions} actions · ${info.fields} fields · ${info.landmarks.length} landmarks on ${info.url}` });
+        useSynforma.getState().addAudit({ actor: "admin", action: "Connected application", target: target.name, detail: `${info.actions} actions · ${info.fields} fields · ${info.landmarks.length} landmarks on ${info.url}` });
       }
     } catch (e) {
       setConnection({ status: "error", info: null, error: errorMessage(e) });

@@ -18,7 +18,7 @@ import { rollbackEntries } from "@/lib/synforma/engine/ledger";
 import { DemonstrationRecorder, reconstructWorkflow } from "@/lib/synforma/engine/demonstration";
 import { composeRecap, skillStatus } from "@/lib/synforma/engine/proficiency";
 import type { Claim, Hypothesis, Intervention, LedgerEntry, ParsedObjective, StruggleSignal } from "@/lib/synforma/types";
-import { DEFAULT_CONTEXT, DEFAULT_OBJECTIVE, SANDBOX_APP } from "@/lib/synforma/demo";
+import { contextFor, targetById } from "@/lib/synforma/targets";
 import type { RunEvent, Workflow } from "@/lib/synforma/types";
 
 declare global {
@@ -33,35 +33,44 @@ export default function EngineHarness() {
     const iframe = ref.current!;
     const logs: string[] = [];
     const driver = new IframeDriver(iframe, { paceMs: 0, events: { onLog: (m) => logs.push(m) } });
+    const T = targetById(new URLSearchParams(window.location.search).get("target"));
     const planner = new HeuristicPlanner();
     const api = {
       driver,
       planner,
       logs,
       events: [] as Partial<RunEvent>[],
+      target: T,
+      defaultContext(): Record<string, string> {
+        return contextFor(T);
+      },
+      /** Simulated vendor update: switch the target's UI version through its settings page. */
+      async vendorUpdate(v: "v1" | "v2") {
+        await driver.goto(`${T.baseUrl}/settings?ui=${v}`);
+      },
       async snapshot(url?: string) {
         if (url) await driver.goto(url);
         return driver.snapshot().page;
       },
-      async discover(startUrl = SANDBOX_APP.baseUrl, limits?: Record<string, number>) {
+      async discover(startUrl = T.baseUrl, limits?: Record<string, number>) {
         const graph = createGraph("g_test");
         const events: ExploreEvent[] = [];
-        const { states, stats } = await explore({ driver, startUrl, appName: SANDBOX_APP.name, graph, limits, onEvent: (e) => events.push(e) });
+        const { states, stats } = await explore({ driver, startUrl, appName: T.name, graph, limits, onEvent: (e) => events.push(e) });
         (api as Record<string, unknown>).states = states;
         (api as Record<string, unknown>).graph = graph;
         return { states: states.map((s) => ({ id: s.id, label: s.label, route: s.route, fields: s.page.fields.map((f) => f.name), actions: s.page.actions.map((a) => a.name), revealed: s.revealed, depth: s.depth })), stats, graphCounts: { nodes: graph.nodes.length, edges: graph.edges.length }, logs: events.filter((e) => e.type === "log").map((e) => (e as { message: string }).message) };
       },
-      async plan(objective = DEFAULT_OBJECTIVE) {
+      async plan(objective = T.objective) {
         const states = (api as Record<string, unknown>).states as DiscoveredState[];
         const graph = (api as Record<string, unknown>).graph as ReturnType<typeof createGraph>;
-        const parsed = await planner.parseObjective({ objectiveText: objective, appName: SANDBOX_APP.name });
-        const workflow = await planner.inferWorkflow({ parsed, states, graph, startUrl: SANDBOX_APP.baseUrl });
+        const parsed = await planner.parseObjective({ objectiveText: objective, appName: T.name });
+        const workflow = await planner.inferWorkflow({ parsed, states, graph, startUrl: T.baseUrl });
         (api as Record<string, unknown>).parsed = parsed;
         (api as Record<string, unknown>).workflow = workflow;
         return { parsed, workflow };
       },
       ledger: [] as LedgerEntry[],
-      async act(context: Record<string, string> = DEFAULT_CONTEXT, approve = true, extra: { routineOnly?: boolean; useTrust?: boolean; onlySteps?: string[]; workflowOverride?: Workflow } = {}) {
+      async act(context: Record<string, string> = contextFor(T), approve = true, extra: { routineOnly?: boolean; useTrust?: boolean; onlySteps?: string[]; workflowOverride?: Workflow } = {}) {
         const workflow = extra.workflowOverride ?? ((api as Record<string, unknown>).workflow as Workflow);
         const parsed = (api as Record<string, unknown>).parsed as ParsedObjective;
         api.events = [];
@@ -97,7 +106,7 @@ export default function EngineHarness() {
         const graph = (api as Record<string, unknown>).graph as ReturnType<typeof createGraph>;
         const workflow = (api as Record<string, unknown>).workflow as Workflow;
         const parsed = objectiveOverride ?? ((api as Record<string, unknown>).parsed as ParsedObjective);
-        const program = { id: "p_test", title: "t", objectiveText: "", application: { name: SANDBOX_APP.name, baseUrl: SANDBOX_APP.baseUrl }, parsed, workflow, graphId: "g", status: "active", planner: "heuristic", createdAt: Date.now(), updatedAt: Date.now() } as unknown as Parameters<typeof claimsFromProgram>[0];
+        const program = { id: "p_test", title: "t", objectiveText: "", application: { name: T.name, baseUrl: T.baseUrl }, parsed, workflow, graphId: "g", status: "active", planner: "heuristic", createdAt: Date.now(), updatedAt: Date.now() } as unknown as Parameters<typeof claimsFromProgram>[0];
         const claims = claimsFromProgram(program, graph, states);
         (api as Record<string, unknown>).claimsData = claims;
         return { report: truthReport(claims), sample: claims.slice(0, 6).map((c) => `${c.authority} · ${c.statement}`), contested: claims.filter((c) => c.status === "contested").map((c) => c.statement + " — " + (c.reason ?? "")), belief: resolveBelief(claims, "requirement:r2") };
@@ -111,8 +120,8 @@ export default function EngineHarness() {
       async replan(objectiveText: string) {
         const states = (api as Record<string, unknown>).states as DiscoveredState[];
         const graph = (api as Record<string, unknown>).graph as ReturnType<typeof createGraph>;
-        const parsed = await planner.parseObjective({ objectiveText, appName: SANDBOX_APP.name });
-        const workflow = await planner.inferWorkflow({ parsed, states, graph, startUrl: SANDBOX_APP.baseUrl });
+        const parsed = await planner.parseObjective({ objectiveText, appName: T.name });
+        const workflow = await planner.inferWorkflow({ parsed, states, graph, startUrl: T.baseUrl });
         (api as Record<string, unknown>).parsed = parsed;
         (api as Record<string, unknown>).workflow = workflow;
         return { requirements: parsed.requirements.map((r) => r.text), steps: workflow.steps.map((s) => s.title) };
@@ -127,7 +136,7 @@ export default function EngineHarness() {
         const states = (api as Record<string, unknown>).states as DiscoveredState[];
         const parsed = (api as Record<string, unknown>).parsed as ParsedObjective;
         const planned = (api as Record<string, unknown>).workflow as Workflow;
-        const rec = reconstructWorkflow(trace, { objective: parsed, states, planned, startUrl: SANDBOX_APP.baseUrl, planner: "heuristic" });
+        const rec = reconstructWorkflow(trace, { objective: parsed, states, planned, startUrl: T.baseUrl, planner: "heuristic" });
         (api as Record<string, unknown>).demonstrated = rec.workflow;
         return { traceCount: trace.length, summary: rec.summary, steps: rec.workflow.steps.map((s) => `${s.title} [${s.mode}${s.commit ? ", commit" : ""}] ${s.actions.map((a) => `${a.kind}:${a.targetName}`).join(" ; ")}`), questions: rec.questions.map((q) => q.question), deviations: rec.deviations, version: rec.workflow.version };
       },
@@ -177,7 +186,7 @@ export default function EngineHarness() {
         const parsed = (api as Record<string, unknown>).parsed as Record<string, unknown>;
         const hyps: Hypothesis[] = [];
         const ints: Intervention[] = [];
-        const program = { id: "p_test", title: "t", objectiveText: "", application: { name: SANDBOX_APP.name, baseUrl: SANDBOX_APP.baseUrl }, parsed, workflow, graphId: "g", status: "active", planner: "heuristic", createdAt: 0, updatedAt: 0 } as unknown as Parameters<typeof decide>[1]["program"];
+        const program = { id: "p_test", title: "t", objectiveText: "", application: { name: T.name, baseUrl: T.baseUrl }, parsed, workflow, graphId: "g", status: "active", planner: "heuristic", createdAt: 0, updatedAt: 0 } as unknown as Parameters<typeof decide>[1]["program"];
         return decide(signal, {
           planner,
           program,
