@@ -4,13 +4,18 @@ Synforma is a plain Next.js app with no database and no required secrets. All st
 browser (localStorage). The bundled target application (Meridian CRM) is part of the same site, so a
 single deployment is the whole demo.
 
+## Live site
+
+https://synforma.netlify.app is the production deploy of `main` (Netlify project `synforma`, git-connected;
+every push to `main` rebuilds it, every pull request gets a Deploy Preview). While the team's visitor
+access setting requires a Netlify team login, sign in to Netlify first or turn that setting off under
+**Team settings → Site access**.
+
 ## Run locally (2 minutes)
 
 ```bash
 git clone https://github.com/goinghamm9/Experimentation.git
-cd Experimentation
-git checkout claude/synforma-loop-website-3d-ooqg1a   # until the PR is merged
-cd synforma
+cd Experimentation/synforma
 npm install
 npm run dev
 ```
@@ -23,13 +28,9 @@ The repository carries a `netlify.toml` (base directory `synforma`, static expor
 
 1. In Netlify choose **Add new project → Import from an existing project → GitHub** and pick
    `goinghamm9/Experimentation`.
-2. Choose the branch (`claude/synforma-loop-website-3d-ooqg1a` until the PR is merged, then `main`).
-   Build settings are read from `netlify.toml`; leave them as detected.
+2. Choose the branch (`main`). Build settings are read from `netlify.toml`; leave them as detected.
 3. Deploy. The site serves everything statically; the optional planner API is not part of a static
    export, so the heuristic planner runs (the UI says so).
-
-If a project named `synforma` already exists in your team (it does), open it → **Project configuration →
-Build & deploy → Link repository** and follow the same steps.
 
 ## Deploy to GitHub Pages (one setting, then automatic)
 

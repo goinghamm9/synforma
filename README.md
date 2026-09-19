@@ -36,8 +36,9 @@ semantically. That is self-healing without a single selector.
 
 ## Try it
 
-Local in two minutes, or deploy to Vercel in five clicks: see `docs/DEPLOY.md`. No database, no
-required secrets; all state lives in the browser.
+Live: **https://synforma.netlify.app** (Mission Control at `/demo`, employee view at `/employee`, Work
+Graph at `/graph`, sandbox CRM at `/sandbox/crm`). Local in two minutes, or your own deploy in a few
+clicks: see `docs/DEPLOY.md`. No database, no required secrets; all state lives in the browser.
 
 ## Quick start
 
