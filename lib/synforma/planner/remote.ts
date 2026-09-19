@@ -1,11 +1,11 @@
 import type { DiscoveredState } from "../engine/explorer";
-import type { ParsedObjective, Workflow } from "../types";
+import type { ParsedObjective, PlannerKind, Workflow } from "../types";
 import { HeuristicPlanner } from "./heuristic";
 import { AssistanceSchema, DiagnosisSchema, FieldMappingSchema, ParsedObjectiveSchema, type PlannerRequest } from "./protocol";
 import type { AssistanceContent, ComposeAssistanceInput, DiagnoseInput, DiagnoseOutput, InferWorkflowInput, ParseObjectiveInput, Planner } from "./types";
 
 /**
- * GeminiPlanner — browser-side client for the server-side LLM planner.
+ * RemotePlanner — browser-side client for the server-side LLM planner (Claude or Gemini).
  *
  * The LLM runs only on the server (app/api/planner). It receives structured
  * inputs and must return JSON that validates against the protocol schemas.
@@ -15,12 +15,15 @@ import type { AssistanceContent, ComposeAssistanceInput, DiagnoseInput, Diagnose
  * is reported so the UI can label it.
  */
 
-export class GeminiPlanner implements Planner {
-  readonly kind = "gemini" as const;
+export class RemotePlanner implements Planner {
   private readonly heuristic = new HeuristicPlanner();
   lastError: string | null = null;
 
-  constructor(private readonly endpoint = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/planner`) {}
+  constructor(
+    /** The vendor the server reported as configured; only used for labels and provenance. */
+    readonly kind: Exclude<PlannerKind, "heuristic">,
+    private readonly endpoint = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/planner`,
+  ) {}
 
   private async call<T>(req: PlannerRequest, parse: (raw: unknown) => T): Promise<T | null> {
     try {
@@ -85,7 +88,7 @@ export class GeminiPlanner implements Planner {
       const step = st ? wf.steps.find((x) => x.screenId === st.screenNodeId && !x.commit) : undefined;
       if (step && !(step.judgment && sm.mode === "act")) {
         step.mode = sm.mode;
-        step.modeRationale = `${sm.rationale} (Gemini)`;
+        step.modeRationale = `${sm.rationale} (language model)`;
       }
     }
     return wf;

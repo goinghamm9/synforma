@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Badge, Button, Skeleton } from "@/components/ui";
-import { resolvePlannerKind } from "@/lib/synforma/planner";
+import { plannerLabel, resolvePlannerKind } from "@/lib/synforma/planner";
 import { PlannerStatusSchema, type PlannerStatus } from "@/lib/synforma/planner/protocol";
 import { useSynforma } from "@/lib/synforma/store";
 import type { SynformaSettings } from "@/lib/synforma/types";
@@ -11,9 +11,9 @@ import { FieldRow, SettingsSection, StatusLine } from "./section";
 type Preference = SynformaSettings["plannerPreference"];
 
 const OPTIONS: { value: Preference; label: string; hint: string }[] = [
-  { value: "auto", label: "Automatic", hint: "Use Gemini when the server has a key; otherwise the heuristic planner." },
+  { value: "auto", label: "Automatic", hint: "Use the language model (Claude or Gemini) when the server has a key; otherwise the heuristic planner." },
   { value: "heuristic", label: "Heuristic only", hint: "Deterministic and lexical. Runs without any key and behaves the same every time." },
-  { value: "gemini", label: "Gemini", hint: "Requires GEMINI_API_KEY on the server. Falls back to the heuristic planner when it is missing." },
+  { value: "llm", label: "Language model", hint: "Requires ANTHROPIC_API_KEY (Claude) or GEMINI_API_KEY (Gemini) on the server. Falls back to the heuristic planner, with a warning here, when neither is set." },
 ];
 
 type Fetch = { state: "loading" } | { state: "ok"; status: PlannerStatus } | { state: "error"; message: string };
@@ -87,11 +87,11 @@ export function PlannerSection() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="muted">Heuristic planner</Badge>
               <span className="text-sm text-graphite">
-                Set <code className="mono-data text-[12px]">GEMINI_API_KEY</code> to enable Gemini.
+                Set <code className="mono-data text-[12px]">ANTHROPIC_API_KEY</code> (Claude) or <code className="mono-data text-[12px]">GEMINI_API_KEY</code> (Gemini) to enable the language-model planner.
               </span>
             </div>
             <StatusLine>
-              Optional: <code className="mono-data text-[12px]">GEMINI_MODEL</code> selects the model (default gemini-2.5-flash). Restart the server after changing the environment.
+              Optional: <code className="mono-data text-[12px]">ANTHROPIC_MODEL</code> / <code className="mono-data text-[12px]">GEMINI_MODEL</code> select the model (defaults claude-opus-5 and gemini-2.5-flash); <code className="mono-data text-[12px]">PLANNER_PROVIDER</code> pins a vendor when both keys are set. Restart the server after changing the environment.
             </StatusLine>
           </div>
         )}
@@ -123,9 +123,9 @@ export function PlannerSection() {
           </div>
         </fieldset>
         {effective ? (
-          <StatusLine tone={preference === "gemini" && effective === "heuristic" ? "amber" : "muted"}>
-            Effective planner right now: <span className="font-medium text-ink">{effective === "gemini" ? `Gemini${status?.model ? ` (${status.model})` : ""}` : "Heuristic"}</span>
-            {preference === "gemini" && effective === "heuristic" ? " — Gemini was requested but no key is configured." : "."}
+          <StatusLine tone={preference === "llm" && effective === "heuristic" ? "amber" : "muted"}>
+            Effective planner right now: <span className="font-medium text-ink">{plannerLabel(effective, status)}</span>
+            {preference === "llm" && effective === "heuristic" ? " — a language model was requested but no key is configured." : "."}
           </StatusLine>
         ) : null}
       </FieldRow>

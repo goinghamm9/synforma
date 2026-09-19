@@ -42,6 +42,35 @@ export interface RunnerHooks {
   onLedger?: (entry: LedgerEntry) => void;
 }
 
+/**
+ * What a run is allowed to do. One object instead of a pile of flags.
+ *
+ *  commits  "ask"   → every commit control waits for hooks.requestApproval (default)
+ *           "auto"  → commits proceed without asking (simulations; a commit the person approved a moment ago)
+ *  scope    "all"     → every action of every selected step
+ *           "routine" → routine actions only: judgment requirements are left for the person and the run
+ *                       stops in front of the commit control ("Get It Done")
+ *  steps    limit the run to these step ids (single-step assist, resuming after a stop); omit for the whole workflow
+ *  trust    the Autonomy Contract and evidence that gate autonomy; omit for simulations and single-step assists,
+ *           which are never blocked by a contested claim
+ */
+export interface RunPolicy {
+  commits: "ask" | "auto";
+  scope: "all" | "routine";
+  steps?: string[];
+  trust?: { contract?: AutonomyContract; claims: Claim[] };
+}
+
+export const DEFAULT_POLICY: RunPolicy = { commits: "ask", scope: "all" };
+
+/** Who and what a ledger entry is attributed to. Without it, no ledger entries are written. */
+export interface LedgerProvenance {
+  runId: string;
+  programId: string;
+  intent?: string;
+  decidedBy?: PlannerKind | "rule";
+}
+
 export interface RunnerOptions {
   driver: IframeDriver;
   workflow: Workflow;
@@ -49,21 +78,10 @@ export interface RunnerOptions {
   context: Record<string, string>;
   actor: RunActor;
   hooks: RunnerHooks;
+  policy?: Partial<RunPolicy>;
   capabilities?: RunCapabilities;
-  requireApprovalForCommit?: boolean;
   signal?: AbortSignal;
-  /** Only run these steps (Assist mode). */
-  onlySteps?: string[];
-  /** Get It Done: fill routine (non-judgment) inputs, leave judgment fields to the person, stop before commit. */
-  routineOnly?: boolean;
-  /** Trust layer: the workflow's Autonomy Contract and current claims. Conflicting claims stop autonomous steps. */
-  contract?: AutonomyContract;
-  claims?: Claim[];
-  /** For the ledger. */
-  runId?: string;
-  programId?: string;
-  intent?: string;
-  decidedBy?: PlannerKind | "rule";
+  ledger?: LedgerProvenance;
 }
 
 export interface RunnerResult {
@@ -80,10 +98,12 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
   const { driver, workflow, requirements, context, hooks } = opts;
   const caps = opts.capabilities ?? FULL_CAPABILITIES;
-  const requireApproval = opts.requireApprovalForCommit ?? true;
+  const policy: RunPolicy = { ...DEFAULT_POLICY, ...(opts.policy ?? {}) };
+  const requireApproval = policy.commits === "ask";
+  const routineOnly = policy.scope === "routine";
   let regroundings = 0;
   const collected: Record<string, string> = {};
-  const steps = opts.onlySteps ? workflow.steps.filter((s) => opts.onlySteps!.includes(s.id)) : workflow.steps;
+  const steps = policy.steps ? workflow.steps.filter((s) => policy.steps!.includes(s.id)) : workflow.steps;
 
   const perform = async (action: Action, step: WorkflowStep): Promise<ActionResult> => {
     if (opts.signal?.aborted) throw new Error("aborted");
@@ -107,17 +127,17 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
     let page: PageModel = driver.snapshot().page;
 
     // Trust decision for this step (Autonomy Contract + evidence). Conflicting sources stop autonomy.
-    if (opts.claims || opts.contract) {
-      const trust = stepTrust(step, workflow, opts.contract, opts.claims ?? []);
+    if (policy.trust) {
+      const trust = stepTrust(step, workflow, policy.trust.contract, policy.trust.claims);
       hooks.onEvent("trust_decision", { decision: trust.decision, risk: trust.risk, reasons: trust.reasons, actionClass: trust.actionClass }, step.id, `Trust: ${trust.decision} (${trust.actionClass})`);
       if (trust.decision === "stop") {
         hooks.onEvent("run_abandoned", { reason: "conflicting sources", details: trust.reasons }, step.id, trust.reasons[0]);
         hooks.onStep?.(step, "failed");
         return { outcome: "abandoned", requirementsMet: [], regroundings, failedStepId: step.id, error: trust.reasons[0] };
       }
-      if (trust.decision === "guide" && opts.actor === "agent" && !opts.onlySteps) {
+      if (trust.decision === "guide" && opts.actor === "agent" && !policy.steps) {
         const cls = trust.actionClass;
-        if (policyFor(opts.contract, cls) === "never") {
+        if (policyFor(policy.trust.contract, cls) === "never") {
           hooks.onEvent("run_abandoned", { reason: "contract forbids autonomy", actionClass: cls }, step.id, `The Autonomy Contract never lets Synforma perform ${cls} actions`);
           hooks.onStep?.(step, "failed");
           return { outcome: "abandoned", requirementsMet: [], regroundings, failedStepId: step.id, error: "Autonomy Contract: never" };
@@ -127,7 +147,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
 
     for (const raw of step.actions) {
       let action: Action = { ...raw };
-      if (opts.routineOnly && isRequirementAction(action)) {
+      if (routineOnly && isRequirementAction(action)) {
         const rid = requirementIdOfAction(action);
         const req = requirements.find((r) => r.id === rid);
         if (req?.judgment) {
@@ -135,7 +155,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
           continue;
         }
       }
-      if (opts.routineOnly && step.commit && isCommitAction(action, step)) {
+      if (routineOnly && step.commit && isCommitAction(action, step)) {
         hooks.onEvent("note", { stoppedBeforeCommit: action.label }, step.id, `Stopped before "${action.targetName}" — your approval is needed to commit`);
         hooks.onStep?.(step, "completed");
         return { outcome: "completed", requirementsMet: [], regroundings };
@@ -197,20 +217,20 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       }
       const beforeVal = fieldValue(page, action.target);
       let r = await perform(action, step);
-      if (hooks.onLedger && opts.runId && opts.programId) {
+      if (hooks.onLedger && opts.ledger) {
         const afterPage = r.page ?? driver.snapshot().page;
         const targetKey = r.regroundedTo ?? action.target;
         const afterVal = fieldValue(afterPage, targetKey);
         const reqId = requirementIdOfAction(raw);
         hooks.onLedger(
           makeLedgerEntry({
-            runId: opts.runId,
-            programId: opts.programId,
+            runId: opts.ledger.runId,
+            programId: opts.ledger.programId,
             stepId: step.id,
             requestedBy: opts.actor,
-            intent: opts.intent ?? workflow.title,
+            intent: opts.ledger.intent ?? workflow.title,
             reliedOn: reqId ? [`requirement:${reqId}`] : [],
-            decidedBy: opts.decidedBy ?? "rule",
+            decidedBy: opts.ledger.decidedBy ?? "rule",
             actionClass: classifyAction(action, step),
             action,
             before: beforeVal !== undefined && targetKey ? { key: targetKey, value: beforeVal } : undefined,
@@ -263,7 +283,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
     hooks.onStep?.(step, "completed");
   }
 
-  if (opts.onlySteps) {
+  if (policy.steps) {
     return { outcome: "completed", requirementsMet: [], regroundings };
   }
 

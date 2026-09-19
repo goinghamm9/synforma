@@ -22,9 +22,9 @@ export interface GenerateJSONInput {
 }
 
 export interface LLMProvider {
-  /** Short vendor id shown in the UI ("gemini"). Never a secret. */
+  /** Short vendor id shown in the UI ("claude", "gemini"). Never a secret. */
   readonly name: string;
-  /** Model id shown in the UI ("gemini-2.5-flash"). */
+  /** Model id shown in the UI ("claude-opus-5", "gemini-2.5-flash"). */
   readonly model: string;
   /**
    * Generate a JSON value that should match `schema`. Providers return the

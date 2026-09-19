@@ -1,4 +1,5 @@
 "use client";
+import { plannerVendor } from "@/lib/synforma/planner";
 import { useState } from "react";
 import { ChevronDown, Clock, HelpCircle, Loader2, MessageSquare, Minus, ThumbsDown, ThumbsUp, Wand2 } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardHeader, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui";
@@ -66,7 +67,7 @@ export function AssistanceCard({ intervention, hypothesis, step, assisting, onGo
       <CardHeader className="p-4 pb-0">
         <div className="flex items-center justify-between gap-2">
           <p className={cn("eyebrow", quiet ? "text-slate" : "text-signal")}>{quiet ? "Synforma · a note before you continue" : "Synforma · assistance"}</p>
-          <span className="text-[11px] text-slate">{intervention.generatedBy === "gemini" ? "Composed by Gemini" : "Composed by the heuristic planner"}</span>
+          <span className="text-[11px] text-slate">{`Composed by ${intervention.generatedBy === "heuristic" ? "the heuristic planner" : plannerVendor(intervention.generatedBy)}`}</span>
         </div>
         <h2 className="text-[15px] font-medium leading-snug text-ink">{intervention.content.title}</h2>
         <p className="whitespace-pre-line text-[13px] leading-relaxed text-graphite">{intervention.content.body}</p>

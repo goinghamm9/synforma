@@ -105,7 +105,7 @@ export function DecisionPolicy() {
       <h3 className="mt-10 text-base font-medium text-ink">Why the language model is not the source of scientific truth</h3>
       <Prose className="mt-3">
         <p>
-          When a Gemini key is configured, a language model helps with four narrow tasks: reading an objective into requirements, matching those
+          When a Claude or Gemini key is configured on the server, a language model helps with four narrow tasks: reading an objective into requirements, matching those
           requirements to discovered fields, naming a barrier from observed signals, and phrasing assistance. Each response must validate against
           a fixed schema and is discarded, then replaced by the deterministic planner, when it does not. The model cannot add a technique, cite a
           source, change a weight or assign a cohort.

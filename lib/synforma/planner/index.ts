@@ -1,12 +1,12 @@
 import type { PlannerKind, SynformaSettings } from "../types";
-import { GeminiPlanner } from "./gemini";
+import { RemotePlanner } from "./remote";
 import { HeuristicPlanner } from "./heuristic";
 import { PlannerStatusSchema, type PlannerStatus } from "./protocol";
 import type { Planner } from "./types";
 
 export type { Planner } from "./types";
 export { HeuristicPlanner } from "./heuristic";
-export { GeminiPlanner } from "./gemini";
+export { RemotePlanner } from "./remote";
 
 let cachedStatus: PlannerStatus | null = null;
 
@@ -23,12 +23,29 @@ export async function fetchPlannerStatus(): Promise<PlannerStatus> {
   return cachedStatus;
 }
 
+/** The language-model kind the server reports, or null when none is configured. */
+export function configuredLlmKind(status: PlannerStatus | null | undefined): Exclude<PlannerKind, "heuristic"> | null {
+  if (!status?.configured) return null;
+  return status.provider === "claude" || status.provider === "gemini" ? status.provider : null;
+}
+
 export function resolvePlannerKind(pref: SynformaSettings["plannerPreference"], status: PlannerStatus): PlannerKind {
   if (pref === "heuristic") return "heuristic";
-  if (pref === "gemini") return status.configured ? "gemini" : "heuristic";
-  return status.configured ? "gemini" : "heuristic";
+  return configuredLlmKind(status) ?? "heuristic";
 }
 
 export function createPlanner(kind: PlannerKind): Planner {
-  return kind === "gemini" ? new GeminiPlanner() : new HeuristicPlanner();
+  return kind === "heuristic" ? new HeuristicPlanner() : new RemotePlanner(kind);
+}
+
+/** Vendor name for prose ("Claude", "Gemini", "Heuristic"). */
+export function plannerVendor(kind: PlannerKind | null | undefined): "Claude" | "Gemini" | "Heuristic" {
+  return kind === "claude" ? "Claude" : kind === "gemini" ? "Gemini" : "Heuristic";
+}
+
+/** Honest planner label ("Claude planner · claude-opus-5", "Heuristic planner"). The model is shown only when the status matches the kind. */
+export function plannerLabel(kind: PlannerKind | null | undefined, status?: PlannerStatus | null): string {
+  if (!kind || kind === "heuristic") return "Heuristic planner";
+  const model = status?.provider === kind && status.model ? ` · ${status.model}` : "";
+  return `${plannerVendor(kind)} planner${model}`;
 }

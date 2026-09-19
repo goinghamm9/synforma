@@ -1,10 +1,11 @@
 "use client";
+import { plannerVendor } from "@/lib/synforma/planner";
 import * as React from "react";
-import { AlertCircle, BadgeCheck, CheckCircle2, CircleDashed, Cpu, Eye, Hand, HelpCircle, Info, MousePointerClick, Sparkle, XCircle } from "lucide-react";
-import { Badge, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { AlertCircle, BadgeCheck, BookOpenCheck, CheckCircle2, CircleDashed, Cpu, Eye, Hand, HelpCircle, Info, MousePointerClick, OctagonAlert, Sparkle, XCircle } from "lucide-react";
+import { Badge, Button, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import type { ExecutionMode, PlannerKind, Provenance, RunOutcome } from "@/lib/synforma/types";
-import { MODE_LABEL, OUTCOME_LABEL, SOURCE_LABEL, TRUST_LABEL, type LogLine, type LogLevel } from "./types";
+import type { ExecutionMode, PlannerKind, Provenance, RunOutcome, WorkflowStep } from "@/lib/synforma/types";
+import { MODE_LABEL, OUTCOME_LABEL, SOURCE_LABEL, TRUST_LABEL, type ChangeRecord, type LogLine, type LogLevel, type TrustStop } from "./types";
 
 /** Small shared pieces used by several phase panels. */
 
@@ -165,7 +166,7 @@ export function TrustBadge({ provenance, planner, className }: { provenance?: Pr
   const observed = trust === "AUTHORITATIVE_LIVE" || trust === "OBSERVED_HIGH_CONFIDENCE" || trust === "OBSERVED_LOW_CONFIDENCE";
   const approved = trust === "ORGANIZATION_APPROVED";
   const by = provenance.by ?? planner;
-  const label = inferred ? `Model-inferred · ${by === "gemini" ? "Gemini" : "heuristic"}` : TRUST_LABEL[trust];
+  const label = inferred ? `Model-inferred · ${by && by !== "heuristic" ? plannerVendor(by) : "heuristic"}` : TRUST_LABEL[trust];
   const Icon = inferred ? Cpu : approved ? BadgeCheck : observed ? Eye : HelpCircle;
   return (
     <Tooltip>
@@ -283,6 +284,45 @@ export function LogView({ lines, height = 220, emptyText = "Nothing yet.", class
         </ol>
       )}
     </div>
+  );
+}
+
+/** A run stopped by the trust layer before a step: the conflict, its details and the way to the evidence. */
+export function TrustStopCard({ trustStop, step, onReviewEvidence }: { trustStop: TrustStop; step?: WorkflowStep; onReviewEvidence: () => void }) {
+  return (
+    <div role="alert" className="flex items-start gap-3 rounded-md border border-signal/30 bg-signal-soft px-3 py-2.5" data-testid="trust-stop">
+      <OctagonAlert className="mt-0.5 h-4 w-4 shrink-0 text-signal" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-ink">Stopped{step ? ` before step ${step.index + 1} (${step.title})` : ""}: sources conflict</div>
+        <p className="mt-0.5 text-xs leading-relaxed text-graphite">{trustStop.reason}</p>
+        {trustStop.details.filter((d) => d !== trustStop.reason).map((d, i) => (
+          <p key={i} className="mt-0.5 text-xs text-slate">
+            {d}
+          </p>
+        ))}
+        <Button size="sm" variant="outline" className="mt-2" onClick={onReviewEvidence} data-testid="review-evidence">
+          <BookOpenCheck aria-hidden="true" />
+          Review the evidence
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** UI changes detected by semantic re-grounding during a run: screen, old and new name, risk. */
+export function ChangeList({ changes }: { changes: ChangeRecord[] }) {
+  return (
+    <ul className="divide-y divide-line rounded-md border border-line text-xs">
+      {changes.map((c) => (
+        <li key={c.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-2.5 py-1.5">
+          <span className="mono-data text-slate">{c.screen ?? "unknown screen"}</span>
+          <span className="text-graphite">
+            &lsquo;{c.from}&rsquo; is now &lsquo;{c.to}&rsquo;
+          </span>
+          <span className={cn("ml-auto rounded-full border px-1.5 py-px text-[10.5px]", c.risk === "medium" || c.risk === "high" ? "border-amber/30 bg-amber-soft text-amber" : "border-line text-slate")}>{c.risk} risk</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

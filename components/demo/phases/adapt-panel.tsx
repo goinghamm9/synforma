@@ -1,4 +1,5 @@
 "use client";
+import { plannerLabel } from "@/lib/synforma/planner";
 import * as React from "react";
 import { BookOpen, ChevronDown, ChevronRight, ExternalLink, FlaskConical, Lightbulb, MoonStar } from "lucide-react";
 import { Badge, Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
@@ -118,7 +119,7 @@ function InterventionCard({ i, program, hypothesis, runs }: { i: Intervention; p
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant={i.status === "deployed" ? "verdant" : i.status === "retired" ? "muted" : "outline"}>{i.status}</Badge>
-            <Badge variant="muted">{i.generatedBy === "gemini" ? "Gemini planner" : "Heuristic planner"}</Badge>
+            <Badge variant="muted">{plannerLabel(i.generatedBy)}</Badge>
           </div>
         </div>
 

@@ -1,20 +1,15 @@
 "use client";
 import * as React from "react";
-import { AlertTriangle, BookOpenCheck, Check, CheckCircle2, Circle, ExternalLink, GitCompareArrows, Loader2, OctagonAlert, Play, RotateCcw, ShieldCheck, Square, Wrench, XCircle } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Circle, ExternalLink, GitCompareArrows, Loader2, Play, RotateCcw, ShieldCheck, Square, Wrench, XCircle } from "lucide-react";
 import { Badge, Button, Label, Switch, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { LedgerTable } from "@/components/trust";
 import { cn, formatDuration } from "@/lib/utils";
 import type { LedgerEntry, Program, Run } from "@/lib/synforma/types";
 import type { RunnerResult } from "@/lib/synforma/engine/runner";
-import type { ChangeRecord, LogLine, UiVariant } from "../types";
-import { ErrorNote, LogView, Note, OutcomeBadge, PanelHeader, Stat } from "../bits";
+import type { ChangeRecord, LogLine, TrustStop, UiVariant } from "../types";
+import { ChangeList, ErrorNote, LogView, Note, OutcomeBadge, PanelHeader, Stat, TrustStopCard } from "../bits";
 
-/** The run was stopped by the trust layer before a step: sources conflict about what should happen there. */
-export interface TrustStop {
-  stepId?: string;
-  reason: string;
-  details: string[];
-}
+export type { TrustStop };
 
 export interface ActState {
   status: "idle" | "running" | "done" | "stopped" | "error";
@@ -39,7 +34,7 @@ interface Props {
   program: Program;
   uiVariant: UiVariant;
   uiBusy: boolean;
-  /** Short planner name for prose ("heuristic planner" / "Gemini planner"). */
+  /** Short planner name for prose ("heuristic planner" / "Claude planner"). */
   plannerName: string;
   requireApproval: boolean;
   agentRuns: Run[];
@@ -206,24 +201,7 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
             <Stat label="Duration" value={state.startedAt && state.endedAt ? formatDuration(state.endedAt - state.startedAt) : "—"} hint="including pacing" />
             <Stat label="Re-groundings" value={result.regroundings} tone={result.regroundings ? "verdant" : "ink"} hint={state.uiVariant ? `UI ${state.uiVariant}` : undefined} />
           </div>
-          {trustStop ? (
-            <div role="alert" className="flex items-start gap-3 rounded-md border border-signal/30 bg-signal-soft px-3 py-2.5" data-testid="trust-stop">
-              <OctagonAlert className="mt-0.5 h-4 w-4 shrink-0 text-signal" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-ink">Stopped{stoppedStep ? ` before step ${stoppedStep.index + 1} (${stoppedStep.title})` : ""}: sources conflict</div>
-                <p className="mt-0.5 text-xs leading-relaxed text-graphite">{trustStop.reason}</p>
-                {trustStop.details.filter((d) => d !== trustStop.reason).map((d, i) => (
-                  <p key={i} className="mt-0.5 text-xs text-slate">
-                    {d}
-                  </p>
-                ))}
-                <Button size="sm" variant="outline" className="mt-2" onClick={onReviewEvidence} data-testid="review-evidence">
-                  <BookOpenCheck aria-hidden="true" />
-                  Review the evidence
-                </Button>
-              </div>
-            </div>
-          ) : null}
+          {trustStop ? <TrustStopCard trustStop={trustStop} step={stoppedStep} onReviewEvidence={onReviewEvidence} /> : null}
           <ul className="space-y-1" data-testid="result-checklist">
             {fieldReqs.map((r) => {
               const met = metSet.has(r.id);
@@ -242,17 +220,7 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
                 <GitCompareArrows className="h-3 w-3" aria-hidden="true" />
                 Changes detected · observed
               </div>
-              <ul className="divide-y divide-line rounded-md border border-line text-xs">
-                {changes.map((c) => (
-                  <li key={c.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-2.5 py-1.5">
-                    <span className="mono-data text-slate">{c.screen ?? "unknown screen"}</span>
-                    <span className="text-graphite">
-                      &lsquo;{c.from}&rsquo; is now &lsquo;{c.to}&rsquo;
-                    </span>
-                    <span className={cn("ml-auto rounded-full border px-1.5 py-px text-[10.5px]", c.risk === "medium" || c.risk === "high" ? "border-amber/30 bg-amber-soft text-amber" : "border-line text-slate")}>{c.risk} risk</span>
-                  </li>
-                ))}
-              </ul>
+              <ChangeList changes={changes} />
               <p className="text-[11px] text-slate">Nothing was re-configured. Each change was re-resolved by meaning and re-verified by execution; this is the seed of configuration-drift detection.</p>
             </div>
           ) : null}

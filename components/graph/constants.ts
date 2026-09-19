@@ -1,6 +1,6 @@
 import type { EdgeType, NodeStatus, NodeType } from "@/lib/synforma/types";
 
-/** Monochrome instrument palette (mirrors docs/DESIGN.md tokens). */
+/** Monochrome instrument palette (mirrors the design tokens in docs/ARCHITECTURE.md). */
 export const COLORS = {
   paper: "#fafaf7",
   ink: "#0b0b0c",

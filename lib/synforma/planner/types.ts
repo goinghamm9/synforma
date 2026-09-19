@@ -17,7 +17,7 @@ import type {
  *
  * Two implementations exist:
  *  - HeuristicPlanner: deterministic, lexical, runs without any API key.
- *  - GeminiPlanner: server-side LLM with structured JSON output validated by Zod.
+ *  - RemotePlanner: server-side LLM (Claude or Gemini) with structured JSON output validated by Zod.
  *
  * Both consume the same inputs and produce the same typed outputs, so the
  * rest of the system (explorer, runner, observer, adoption engine, UI) does not

@@ -1,14 +1,15 @@
 "use client";
 import { Badge } from "@/components/ui";
+import { plannerLabel } from "@/lib/synforma/planner";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
 import type { PlannerKind } from "@/lib/synforma/types";
 
 /** Honest planner label: which reasoning engine composes assistance right now. */
 export function PlannerBadge({ kind, status }: { kind: PlannerKind; status: PlannerStatus | null }) {
-  if (kind === "gemini") {
+  if (kind !== "heuristic") {
     return (
       <Badge variant="outline" data-testid="planner-badge">
-        Gemini planner{status?.model ? ` · ${status.model}` : ""}
+        {plannerLabel(kind, status)}
       </Badge>
     );
   }

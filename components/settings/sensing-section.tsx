@@ -5,11 +5,11 @@ import { useSynforma } from "@/lib/synforma/store";
 import { CollectedDataInspector } from "./collected-data-inspector";
 import { FieldRow, SettingsSection, StatusLine } from "./section";
 
-/** Exact consent wording. Keep in step with docs/PRIVACY_MODEL.md. */
+/** Exact consent wording. Keep in step with the privacy model in docs/OPERATIONS.md. */
 export const SENSING_CONSENT =
   "Synforma uses pointer movement patterns and keyboard metadata (never typed text) to tell whether an interface is creating friction. It does not infer emotions, personality, intelligence or employee value.";
 
-/** The collection table from docs/PRIVACY_MODEL.md, verbatim in substance. */
+/** The collection table from the privacy model in docs/OPERATIONS.md, verbatim in substance. */
 const COLLECTION: { category: string; collected: string; never: string }[] = [
   {
     category: "Semantic screen state",

@@ -74,6 +74,13 @@ export interface ChangeRecord {
   risk: string;
 }
 
+/** The run was stopped by the trust layer before a step: sources conflict about what should happen there. */
+export interface TrustStop {
+  stepId?: string;
+  reason: string;
+  details: string[];
+}
+
 export const MODE_LABEL: Record<ExecutionMode, string> = { guide: "Guide", assist: "Assist", act: "Act" };
 
 export const OUTCOME_LABEL: Record<RunOutcome, string> = { completed: "Completed", abandoned: "Abandoned", failed: "Failed" };

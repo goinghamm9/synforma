@@ -195,7 +195,13 @@ export const useSynforma = create<SynformaState>()(
         settings: s.settings,
         activeProgramId: s.activeProgramId,
       }),
-      merge: (persisted, current) => ({ ...current, ...(persisted as Partial<SynformaState>), settings: { ...DEFAULT_SETTINGS, ...((persisted as Partial<SynformaState>)?.settings ?? {}) } }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<SynformaState> | undefined;
+        const settings = { ...DEFAULT_SETTINGS, ...(p?.settings ?? {}) };
+        // Earlier builds stored the vendor name as the preference; it now means "the configured language model".
+        if ((settings.plannerPreference as string) === "gemini") settings.plannerPreference = "llm";
+        return { ...current, ...(p ?? {}), settings };
+      },
     },
   ),
 );

@@ -10,7 +10,9 @@
     "build:static": "bash scripts/build-static.sh"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "@google/genai": "^2.21.0",
+    "@netlify/plugin-nextjs": "^5.16.0",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "@supabase/ssr": "^0.12.5",

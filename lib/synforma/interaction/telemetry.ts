@@ -9,7 +9,7 @@ import type { ElementRect, KeyboardWindow, PointerWindow } from "../types";
  *
  * Keyboard capture records METADATA only. The key value is classified into a
  * category and discarded immediately. Password, secret, card and similar
- * fields emit nothing but a suppressed count. See docs/PRIVACY_MODEL.md.
+ * fields emit nothing but a suppressed count. See the privacy model in docs/OPERATIONS.md.
  */
 
 interface Sample {

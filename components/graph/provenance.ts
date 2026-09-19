@@ -9,7 +9,7 @@ import type { PlannerKind, Provenance, TrustState } from "@/lib/synforma/types";
  * outranks vendor documentation, which outranks model inference. The order and
  * the labels are the engine's own (lib/synforma/engine/evidence.ts), re-exported
  * so the graph and the Science page can never drift from it. See
- * docs/KNOWLEDGE_LAYERS.md and the TrustState comment in lib/synforma/types.ts.
+ * docs/ARCHITECTURE.md (Knowledge layers) and the TrustState comment in lib/synforma/types.ts.
  */
 export const TRUST_ORDER: readonly TrustState[] = AUTHORITY_ORDER;
 
@@ -29,7 +29,7 @@ export const TRUST_TONE: Record<TrustState, TrustTone> = {
   UNKNOWN: "muted",
 };
 
-/** What each trust state means, and what produces it in this build (docs/KNOWLEDGE_LAYERS.md). */
+/** What each trust state means, and what produces it in this build (docs/ARCHITECTURE.md, Knowledge layers). */
 export const TRUST_MEANING: Record<TrustState, { meaning: string; inThisBuild: string }> = {
   AUTHORITATIVE_LIVE: {
     meaning: "Confirmed on the live instance, not merely seen once.",
@@ -57,7 +57,7 @@ export const TRUST_MEANING: Record<TrustState, { meaning: string; inThisBuild: s
   },
   MODEL_INFERRED: {
     meaning: "A planner hypothesis: the workflow, its steps and their modes, inferred from the objective and the discovered screens.",
-    inThisBuild: "inferWorkflow, by the heuristic or the Gemini planner. Never presented as fact.",
+    inThisBuild: "inferWorkflow, by the heuristic planner or a language model (Claude or Gemini). Never presented as fact.",
   },
   UNKNOWN: {
     meaning: "No provenance recorded.",

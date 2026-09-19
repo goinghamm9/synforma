@@ -1,14 +1,11 @@
-# Netlify: static export of Synforma (no server runtime needed).
-# Base directory is this folder when the repository is imported at its root.
+# Netlify: Synforma on the Next.js runtime (the optional planner route needs a server).
+# Used when the project's base directory is this folder. Paths are relative to this folder.
 [build]
-  command = "npm run build:static"
-  publish = "out"
+  command = "npm run build"
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
 
-# Record pages beyond the pre-generated range fall back to the app's 404 page.
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Frame-Options = "SAMEORIGIN"
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
