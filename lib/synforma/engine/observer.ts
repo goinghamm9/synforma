@@ -394,14 +394,28 @@ export class HumanObserver {
     }
   }
 
+  /** Last known state of each requirement's parts (text/choice part and optional date companion). */
+  private parts = new Map<string, { text?: { met: boolean; fieldName: string; value: string }; date?: { met: boolean; fieldName: string; value: string } }>();
+
+  /**
+   * Live requirement checklist. Each requirement may have a text/choice part
+   * (`{{req:rN}}`, possibly a checkbox group where any checked option counts)
+   * and a date companion (`{{req:rN:date}}`). Parts are re-evaluated
+   * independently on every tick from the live fields; a part whose field is not
+   * on screen keeps its last known state. The requirement is met when every
+   * part the workflow defines is met — never AND-ed with stale combined state.
+   */
   private updateChecklist(page: PageModel): ChecklistItem[] {
     const { workflow, requirements } = this.opts;
+    const tick = new Map<string, { text?: { met: boolean; fieldName: string; value: string }; date?: { met: boolean; fieldName: string; value: string }; checkbox?: { met: boolean; fieldName: string; value: string } }>();
+    const needsDate = new Set<string>();
     for (const step of workflow.steps) {
       for (const a of step.actions) {
         const m = /^\{\{req:(\w+)(:date)?\}\}$/.exec(a.value ?? "");
         if (!m) continue;
         const rid = m[1];
         const isDateCompanion = Boolean(m[2]);
+        if (isDateCompanion) needsDate.add(rid);
         const r = requirements.find((x) => x.id === rid);
         if (!r) continue;
         const hit = ground({ key: a.target, name: a.targetName, role: a.targetRole, kind: "field" }, page, 0.5);
@@ -417,20 +431,29 @@ export class HumanObserver {
           const days = (new Date(value).getTime() - Date.now()) / 86_400_000;
           met = days <= r.expectation.withinDays && days >= -1;
         }
-        const existing = this.checklist.get(rid);
-        // Checkbox groups: any checked option satisfies; do not un-meet because a sibling is unchecked.
-        if (f.role === "checkbox" && !met && existing?.met) continue;
-        // Date companion: only the date part decides the within-N-days check; the text part decides presence.
-        if (isDateCompanion) {
-          if (existing?.met || met) this.checklist.set(rid, { requirementId: rid, met: Boolean(existing?.met) && met, fieldName: f.name, value });
-          continue;
-        }
-        if (r.expectation?.withinDays && existing?.fieldName && /date/i.test(existing.fieldName)) {
-          this.checklist.set(rid, { requirementId: rid, met: met && existing.met, fieldName: existing.fieldName, value: existing.value });
-          continue;
-        }
-        this.checklist.set(rid, { requirementId: rid, met, fieldName: f.name, value });
+        const entry = tick.get(rid) ?? {};
+        const part = { met, fieldName: f.name, value };
+        if (isDateCompanion) entry.date = part;
+        else if (f.role === "checkbox") {
+          // Any checked option in the group satisfies the requirement.
+          if (met || !entry.checkbox) entry.checkbox = part;
+        } else entry.text = part;
+        tick.set(rid, entry);
       }
+    }
+    for (const [rid, t] of tick) {
+      const known = this.parts.get(rid) ?? {};
+      if (t.text) known.text = t.text;
+      else if (t.checkbox) known.text = t.checkbox;
+      if (t.date) known.date = t.date;
+      this.parts.set(rid, known);
+    }
+    for (const [rid, known] of this.parts) {
+      const textMet = known.text?.met ?? false;
+      const dateMet = needsDate.has(rid) ? (known.date?.met ?? false) : true;
+      const met = textMet && dateMet;
+      const primary = known.text && known.date && known.text.met && !known.date.met ? known.date : (known.text ?? known.date);
+      this.checklist.set(rid, { requirementId: rid, met, fieldName: primary?.fieldName, value: primary?.value });
     }
     return requirements.filter((r) => r.kind === "field").map((r) => this.checklist.get(r.id) ?? { requirementId: r.id, met: false });
   }

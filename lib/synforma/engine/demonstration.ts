@@ -140,8 +140,7 @@ export class DemonstrationRecorder {
 export function stepHeadingOf(page: PageModel): string | undefined {
   const fromPath = page.fields[0]?.path.find((p) => /step \d/i.test(p)) ?? page.headings.find((h) => /step \d/i.test(h));
   if (fromPath) return fromPath;
-  const secondary = page.headings.find((h) => h && h !== page.heading);
-  return secondary && page.fields.length ? secondary : undefined;
+  return page.headings.find((h) => h && h !== page.heading);
 }
 
 export interface ClarificationQuestion {

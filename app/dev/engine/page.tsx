@@ -146,6 +146,7 @@ export default function EngineHarness() {
         ];
       },
       frictions: [] as unknown[],
+      checklist: [] as unknown[],
       observe(onSignal: (s: unknown) => void, sensing = true) {
         const workflow = (api as Record<string, unknown>).workflow as Workflow;
         const parsed = (api as Record<string, unknown>).parsed as { requirements: never[]; policyConstraints: string[] };
@@ -164,6 +165,9 @@ export default function EngineHarness() {
             onSignal: (s) => onSignal(s),
             onComplete: (r) => api.events.push({ type: "run_completed", data: r as unknown as Record<string, unknown> }),
             onFriction: (f) => api.frictions.push(f),
+            onChecklist: (items) => {
+              api.checklist = items;
+            },
           },
         });
         observer.start();

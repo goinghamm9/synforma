@@ -34,6 +34,11 @@ Then flip the sandbox's **"Simulate vendor UI update"** switch (labels renamed, 
 collapsible becomes a tab, ids changed) and run again: the log shows each control being re-grounded
 semantically. That is self-healing without a single selector.
 
+## Try it
+
+Local in two minutes, or deploy to Vercel in five clicks: see `docs/DEPLOY.md`. No database, no
+required secrets; all state lives in the browser.
+
 ## Quick start
 
 ```bash

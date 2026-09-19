@@ -2,6 +2,7 @@
 // Asserts the inferred states, the minimal interventions chosen (and DO_NOTHING when fluent / proficient),
 // and that no typed values appear in any event payload. Run: npm run dev (port 3000) then: node verify/friction.spec.js
 const { chromium } = require('playwright');
+const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -23,7 +24,7 @@ const { chromium } = require('playwright');
   await frame.getByRole('menuitem', { name: 'Convert to opportunity' }).click();
   await page.waitForTimeout(800);
   await frame.getByLabel('Amount').fill('52000');
-  await frame.getByLabel('Expected close date').fill('2026-11-20');
+  await frame.getByLabel('Expected close date').fill(inDays(60));
   await page.waitForTimeout(1800);
   console.log('after basics (fluent expected):', JSON.stringify(await stateNow()));
   await frame.getByRole('button', { name: 'Next', exact: true }).click();
@@ -48,7 +49,7 @@ const { chromium } = require('playwright');
   await frame.getByRole('button', { name: 'Next', exact: true }).click();
   await page.waitForTimeout(2200);
   console.log('after bad date (ERROR_RECOVERY expected):', JSON.stringify(await stateNow()));
-  await frame.getByLabel('Next step date').fill('2026-09-12');
+  await frame.getByLabel('Next step date').fill(inDays(7));
   await frame.getByRole('button', { name: 'Next', exact: true }).click();
   await page.waitForTimeout(800);
   await frame.getByRole('button', { name: 'I understand' }).click();

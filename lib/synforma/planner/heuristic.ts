@@ -252,6 +252,9 @@ export class HeuristicPlanner implements Planner {
     for (let i = 0; i < formStates.length; i++) {
       const s = formStates[i];
       const stepHeading = s.page.fields[0]?.path.find((p) => /step \d/i.test(p)) ?? s.page.headings.find((h) => /step \d/i.test(h)) ?? s.page.fields[0]?.region;
+      // Anchor on the section heading (h2) rather than the page heading (h1): the page heading matches every wizard screen.
+      const sectionHeading = s.page.headings.find((h) => h && h !== s.page.heading);
+      const anchorHeading = stepHeading ?? sectionHeading ?? s.page.heading;
       const reqsHere = requirements.filter((r) => best!.mapping.get(r.id)?.state.id === s.id);
       const actions: Action[] = [];
       const reveals: string[] = [];
@@ -322,7 +325,7 @@ export class HeuristicPlanner implements Planner {
           modeRationale,
           commit: false,
           judgment,
-          anchor: { routePattern: s.route, heading: stepHeading ?? s.page.heading, elementName: reqsHere[0] ? best.mapping.get(reqsHere[0].id)!.field.name : requiredFields[0]?.name, role: reqsHere[0] ? best.mapping.get(reqsHere[0].id)!.field.role : requiredFields[0]?.role },
+          anchor: { routePattern: s.route, heading: anchorHeading, elementName: reqsHere[0] ? best.mapping.get(reqsHere[0].id)!.field.name : requiredFields[0]?.name, role: reqsHere[0] ? best.mapping.get(reqsHere[0].id)!.field.role : requiredFields[0]?.role },
           expected: nextBtn ? `${nextBtn.name} leads to the next step.` : undefined,
           reveals,
         });
@@ -347,7 +350,7 @@ export class HeuristicPlanner implements Planner {
           modeRationale: "The commit only confirms values already decided; it is approval-gated and audited.",
           commit: true,
           judgment: false,
-          anchor: { routePattern: s.route, heading: stepHeading ?? s.page.heading, elementName: commitBtn.name, role: "button", dialogTitle: dialogChild?.page.dialogs[0] },
+          anchor: { routePattern: s.route, heading: anchorHeading, elementName: commitBtn.name, role: "button", dialogTitle: dialogChild?.page.dialogs[0] },
           expected: `A new ${objectHint || "record"} exists.`,
           reveals,
         });

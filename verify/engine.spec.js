@@ -2,6 +2,7 @@
 // Set CHROMIUM_PATH if Playwright's bundled Chromium is not installed (npx playwright install chromium).
 // Set SKIP_V2=1 to skip the vendor-UI-update self-healing pass.
 const { chromium } = require('playwright');
+const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -24,7 +25,7 @@ const { chromium } = require('playwright');
   await frame.getByRole('menuitem', { name: 'Convert to opportunity' }).click();
   await page.waitForTimeout(1200);
   await frame.getByLabel('Amount').fill('52000');
-  await frame.getByLabel('Expected close date').fill('2026-11-20');
+  await frame.getByLabel('Expected close date').fill(inDays(60));
   await frame.getByRole('button', { name: 'Next', exact: true }).click();
   await page.waitForTimeout(1200);
   // hesitate on step 2 (threshold 3000ms in harness)
@@ -35,10 +36,11 @@ const { chromium } = require('playwright');
   await frame.getByRole('button', { name: 'Advanced qualification' }).click();
   await frame.getByLabel('None identified').check();
   await frame.getByLabel('Next step', { exact: true }).fill('Discovery call');
+  await page.waitForTimeout(2500); // the text part is met before its date companion: the checklist must not stick
   await frame.getByLabel('Next step date').fill('11/20/2026');
   await frame.getByRole('button', { name: 'Next', exact: true }).click();
   await page.waitForTimeout(1200);
-  await frame.getByLabel('Next step date').fill('2026-09-12');
+  await frame.getByLabel('Next step date').fill(inDays(7));
   await frame.getByRole('button', { name: 'Next', exact: true }).click();
   await page.waitForTimeout(1200);
   await frame.getByRole('button', { name: 'I understand' }).click();
@@ -47,5 +49,7 @@ const { chromium } = require('playwright');
   const out = await page.evaluate(() => ({ events: window.__synforma.events, signals: window.__signals }));
   for (const e of out.events) console.log('  ev', e.type, e.stepId ?? '', e.message ?? '', e.type === 'run_completed' ? JSON.stringify(e.data) : '');
   console.log('SIGNALS', JSON.stringify(out.signals));
+  const checklist = await page.evaluate(() => window.__synforma.checklist);
+  console.log('CHECKLIST', JSON.stringify(checklist.map((c) => `${c.requirementId}:${c.met ? 'met' : 'unmet'}`)));
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
