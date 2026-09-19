@@ -1,0 +1,14 @@
+# Netlify: static export of Synforma (no server runtime needed).
+# Base directory is this folder when the repository is imported at its root.
+[build]
+  command = "npm run build:static"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Record pages beyond the pre-generated range fall back to the app's 404 page.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
