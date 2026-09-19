@@ -11,7 +11,7 @@ duration. A production stream adds `orgId`, `sessionId`, pseudonymous `userId`, 
 | `screen_visited` | UI (optional) | url |
 | `step_entered` / `step_completed` | runner, observer | title, mode, durationMs |
 | `action_executed` | runner | action (kind, label, targetName), ok, durationMs, regrounded, error |
-| `action_regrounded` | runner | from, to, `change { type: "ui_element_changed", screen, affectedStep, detectedAt, risk }` |
+| `action_regrounded` | runner | from, to (semantic key), toName (accessible name), `change { type: "ui_element_changed", screen, affectedStep, detectedAt, risk }` |
 | `action_failed` | runner | action, error |
 | `validation_error` | runner, observer | alerts[] (application text) |
 | `backtrack` | observer | from, to |

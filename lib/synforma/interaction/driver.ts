@@ -250,6 +250,7 @@ export class IframeDriver {
       action,
       regrounded,
       regroundedTo: regrounded ? model.key : undefined,
+      regroundedToName: regrounded ? model.name : undefined,
       page,
       durationMs: performance.now() - started,
     };

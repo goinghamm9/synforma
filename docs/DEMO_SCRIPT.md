@@ -33,7 +33,8 @@ configured for Meridian CRM anywhere in the repo.
     six semantic re-groundings and 5 of 5 requirements verified. Nothing was re-configured.
 12. **Admin insight.** Measure: the recommendation reads which step carries the friction and what would not
     help ("Additional navigation training is unlikely to help"). Intent-to-Outcome Rate shows "Still learning"
-    until five runs exist; run the synthetic users to see it fill in, labeled as simulation.
+    until five runs by people exist (agent runs never count); run the synthetic users twice, or complete a
+    human run in the employee view, to see it fill in, labeled as simulation where applicable.
 
 13. **Evidence.** In Understand, open the evidence panel: every requirement is an organization-approved claim,
     every field a live observation, every mapping a model inference with its confidence. Edit the objective so

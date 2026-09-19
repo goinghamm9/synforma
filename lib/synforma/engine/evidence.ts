@@ -233,7 +233,7 @@ export function detectContradictions(claims: Claim[], states: DiscoveredState[])
 /** A re-grounding during execution supersedes the old naming claim with a live observation. */
 export function claimsFromRegrounding(programId: string, event: RunEvent, existing: Claim[]): Claim[] {
   const from = String(event.data?.from ?? "");
-  const to = String(event.data?.to ?? "");
+  const to = String(event.data?.toName ?? event.data?.to ?? "");
   if (!from || !to) return [];
   const old = existing.find((c) => c.predicate === "exists_on" && c.statement.startsWith(`"${from}"`) && c.status !== "retired");
   const claim = mk(programId, {

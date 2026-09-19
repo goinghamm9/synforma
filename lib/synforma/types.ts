@@ -128,6 +128,8 @@ export interface ActionResult {
   /** True when the target had to be re-resolved semantically because the original key no longer existed. */
   regrounded?: boolean;
   regroundedTo?: string;
+  /** Accessible name of the control the action was re-grounded to. */
+  regroundedToName?: string;
   error?: string;
   page?: PageModel;
   durationMs: number;

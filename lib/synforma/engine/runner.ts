@@ -88,14 +88,14 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
   const perform = async (action: Action, step: WorkflowStep): Promise<ActionResult> => {
     if (opts.signal?.aborted) throw new Error("aborted");
     const r = await driver.perform(action);
-    hooks.onEvent("action_executed", { action: { ...action, target: undefined }, ok: r.ok, durationMs: Math.round(r.durationMs), regrounded: Boolean(r.regrounded), regroundedTo: r.regroundedTo ?? null, error: r.error ?? null }, step.id, `${action.label}${r.ok ? "" : ` — ${r.error}`}`);
+    hooks.onEvent("action_executed", { action: { ...action, target: undefined }, ok: r.ok, durationMs: Math.round(r.durationMs), regrounded: Boolean(r.regrounded), regroundedTo: r.regroundedTo ?? null, regroundedToName: r.regroundedToName ?? null, error: r.error ?? null }, step.id, `${action.label}${r.ok ? "" : ` — ${r.error}`}`);
     if (r.regrounded) {
       regroundings += 1;
       hooks.onEvent(
         "action_regrounded",
-        { from: action.targetName, to: r.regroundedTo, change: { type: "ui_element_changed", screen: step.route ?? null, affectedStep: step.id, detectedAt: Date.now(), risk: step.commit ? "medium" : "low" } },
+        { from: action.targetName, to: r.regroundedTo, toName: r.regroundedToName ?? null, change: { type: "ui_element_changed", screen: step.route ?? null, affectedStep: step.id, detectedAt: Date.now(), risk: step.commit ? "medium" : "low" } },
         step.id,
-        `Re-grounded "${action.targetName}" → ${r.regroundedTo}`,
+        `Re-grounded "${action.targetName}" → "${r.regroundedToName ?? r.regroundedTo}"`,
       );
     }
     return r;
