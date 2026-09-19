@@ -3,8 +3,10 @@ import Link from "next/link";
 import { Loader2, Play } from "lucide-react";
 import { Button, Card, CardContent, CardHeader } from "@/components/ui";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
-import type { PlannerKind, Program } from "@/lib/synforma/types";
+import type { AssistanceLevel, AssistancePreference, PlannerKind, Program } from "@/lib/synforma/types";
 import { formatDuration } from "@/lib/utils";
+import { AssistanceChooser } from "./assistance-chooser";
+import { IndependenceList } from "./independence-list";
 import { PlannerBadge } from "./planner-badge";
 
 interface IntroCardProps {
@@ -16,11 +18,27 @@ interface IntroCardProps {
   hesitationThresholdMs: number;
   treatmentShare: number;
   frameReady: boolean;
+  preference: AssistancePreference;
+  onPreferenceChange: (preference: AssistancePreference) => void;
+  onOverrideProficiency: (stepId: string, level: AssistanceLevel) => void;
   onStart: () => void;
 }
 
-/** Before a run: what to do, what a good outcome looks like, and what Synforma is. */
-export function IntroCard({ program, entryLabel, objectHint, plannerKind, plannerStatus, hesitationThresholdMs, treatmentShare, frameReady, onStart }: IntroCardProps) {
+/** Before a run: what to do, what a good outcome looks like, how Synforma should help, and where the person stands. */
+export function IntroCard({
+  program,
+  entryLabel,
+  objectHint,
+  plannerKind,
+  plannerStatus,
+  hesitationThresholdMs,
+  treatmentShare,
+  frameReady,
+  preference,
+  onPreferenceChange,
+  onOverrideProficiency,
+  onStart,
+}: IntroCardProps) {
   const requirements = (program.parsed?.requirements ?? []).filter((r) => r.kind === "field");
   const stepCount = program.workflow?.steps.length ?? 0;
   return (
@@ -29,7 +47,7 @@ export function IntroCard({ program, entryLabel, objectHint, plannerKind, planne
         <p className="eyebrow">Guide mode · try it as an employee</p>
         <h2 className="text-[15px] font-medium leading-snug text-ink">{program.workflow?.title ?? program.title}</h2>
         <p className="text-[13px] leading-relaxed text-graphite">
-          Create a qualified {objectHint} from {entryLabel} in {program.application.name} the way an employee would. Synforma watches through the same semantic layer it uses to act, and helps only when you get stuck.
+          Create a qualified {objectHint} from {entryLabel} in {program.application.name} the way an employee would. Synforma watches through the same semantic layer it uses to act, and helps only when it would change the outcome.
         </p>
       </CardHeader>
       <CardContent className="p-4">
@@ -47,11 +65,25 @@ export function IntroCard({ program, entryLabel, objectHint, plannerKind, planne
           {requirements.length === 0 ? <li className="text-slate">No field requirements were parsed from the objective.</li> : null}
         </ol>
 
+        <p className="eyebrow mt-4">How should Synforma help?</p>
+        <div className="mt-1.5">
+          <AssistanceChooser value={preference} onChange={onPreferenceChange} variant="list" />
+        </div>
+        <p className="mt-1.5 text-[11px] text-slate">
+          A preference, never an override of the safety rules: judgment fields and commits always stay yours. Change it any time during the run, or press <kbd className="mono-data rounded border border-line bg-surface-2 px-1 text-[10px] text-graphite">Ctrl/⌘ + Shift + S</kbd> when you need it done now.
+        </p>
+
+        <p className="eyebrow mt-4">Your independence</p>
+        <div className="mt-1.5">
+          <IndependenceList program={program} onOverride={onOverrideProficiency} />
+        </div>
+
         <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px]">
           <dt className="text-slate">Workflow</dt>
           <dd className="text-ink">
             {stepCount} step{stepCount === 1 ? "" : "s"} · inferred
             {program.workflow ? <span className="mono-data text-slate"> · {Math.round(program.workflow.confidence * 100)}% confidence</span> : null}
+            {program.workflow?.version ? <span className="mono-data text-slate"> · v{program.workflow.version}</span> : null}
           </dd>
           <dt className="text-slate">Assistance by</dt>
           <dd>
@@ -67,7 +99,7 @@ export function IntroCard({ program, entryLabel, objectHint, plannerKind, planne
           </dd>
         </dl>
         <p className="mt-2 text-[11px] text-slate">
-          Thresholds and cohorts are set in{" "}
+          Thresholds, sensing and cohorts are set in{" "}
           <Link href="/settings" className="underline underline-offset-2 hover:text-ink">
             Settings
           </Link>

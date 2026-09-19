@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
-import { ChevronDown, Loader2, ThumbsDown, Wand2 } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardHeader } from "@/components/ui";
+import { ChevronDown, Clock, HelpCircle, Loader2, MessageSquare, Minus, ThumbsDown, ThumbsUp, Wand2 } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardHeader, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui";
 import { BARRIER_LABEL, BARRIER_SHORT, EVIDENCE_LABEL, TECHNIQUE_BY_ID } from "@/lib/synforma/science/techniques";
 import { cite } from "@/lib/synforma/science/citations";
 import type { EvidenceClass, Hypothesis, Intervention, WorkflowStep } from "@/lib/synforma/types";
 import { cn } from "@/lib/utils";
+import type { AssistanceFeedback } from "./use-guide-run";
 
 const EVIDENCE_VARIANT: Record<EvidenceClass, "verdant" | "amber" | "muted"> = {
   strong: "verdant",
@@ -15,13 +16,24 @@ const EVIDENCE_VARIANT: Record<EvidenceClass, "verdant" | "amber" | "muted"> = {
   experimental: "muted",
 };
 
+/** Techniques that must never draw attention: the control was already found. Rendered as a quiet inline note. */
+export const QUIET_TECHNIQUES: ReadonlySet<string> = new Set(["clarify_consequence"]);
+
+export const FEEDBACK_OPTIONS: { value: AssistanceFeedback; label: string; Icon: typeof ThumbsUp }[] = [
+  { value: "helpful", label: "Helpful", Icon: ThumbsUp },
+  { value: "not_helpful", label: "Not helpful", Icon: ThumbsDown },
+  { value: "wrong_moment", label: "Wrong moment", Icon: Clock },
+  { value: "wrong_assumption", label: "Wrong assumption", Icon: HelpCircle },
+  { value: "too_much_help", label: "Too much help", Icon: Minus },
+];
+
 interface AssistanceCardProps {
   intervention: Intervention;
   hypothesis: Hypothesis | null;
   step: WorkflowStep | null;
   assisting: boolean;
   onGotIt: () => void;
-  onNotHelpful: () => void;
+  onFeedback: (feedback: AssistanceFeedback) => void;
   onDoItForMe: () => void;
 }
 
@@ -31,22 +43,35 @@ function sourceLine(source: string | undefined): string | null {
   return `Based on: ${source}`;
 }
 
-/** One assistance card at a time, anchored in the panel and mirrored on the overlay. */
-export function AssistanceCard({ intervention, hypothesis, step, assisting, onGotIt, onNotHelpful, onDoItForMe }: AssistanceCardProps) {
+/**
+ * One assistance card at a time, anchored in the panel and mirrored on the
+ * overlay. A "clarify consequence" card is the exception: the person already
+ * found the control, so it renders as a quiet note with no ring anywhere.
+ */
+export function AssistanceCard({ intervention, hypothesis, step, assisting, onGotIt, onFeedback, onDoItForMe }: AssistanceCardProps) {
   const [why, setWhy] = useState(false);
   const technique = TECHNIQUE_BY_ID[intervention.techniqueId];
   const source = sourceLine(intervention.content.source);
+  const quiet = QUIET_TECHNIQUES.has(intervention.techniqueId);
   const canAssist = intervention.content.offerAssist && step && !step.judgment;
   return (
-    <Card className="border-signal/40" data-testid="assistance-card" role="region" aria-label="Synforma assistance">
+    <Card
+      className={quiet ? "border-line bg-surface-2/50" : "border-signal/40"}
+      data-testid="assistance-card"
+      data-technique={intervention.techniqueId}
+      data-variant={quiet ? "quiet" : "pointer"}
+      role="region"
+      aria-label="Synforma assistance"
+    >
       <CardHeader className="p-4 pb-0">
         <div className="flex items-center justify-between gap-2">
-          <p className="eyebrow text-signal">Synforma · assistance</p>
+          <p className={cn("eyebrow", quiet ? "text-slate" : "text-signal")}>{quiet ? "Synforma · a note before you continue" : "Synforma · assistance"}</p>
           <span className="text-[11px] text-slate">{intervention.generatedBy === "gemini" ? "Composed by Gemini" : "Composed by the heuristic planner"}</span>
         </div>
         <h2 className="text-[15px] font-medium leading-snug text-ink">{intervention.content.title}</h2>
         <p className="whitespace-pre-line text-[13px] leading-relaxed text-graphite">{intervention.content.body}</p>
         {source ? <p className="text-[12px] text-slate">{source}</p> : null}
+        {quiet ? <p className="text-[11px] text-slate">Nothing is highlighted: you already found the control.</p> : null}
       </CardHeader>
       <CardContent className="p-4">
         {technique ? (
@@ -79,6 +104,7 @@ export function AssistanceCard({ intervention, hypothesis, step, assisting, onGo
                   <p className="mt-1 text-ink">
                     {BARRIER_LABEL[hypothesis.barrier]} <span className="mono-data text-slate">· {Math.round(hypothesis.confidence * 100)}% confidence</span>
                   </p>
+                  {hypothesis.frictionState ? <p className="mt-0.5 text-slate">Derived from the observed interaction state {hypothesis.frictionState.replace(/_/g, " ").toLowerCase()}.</p> : null}
                   {hypothesis.alternatives.length ? (
                     <p className="mt-0.5 text-slate">
                       Alternatives: {hypothesis.alternatives.map((a) => `${BARRIER_SHORT[a.barrier]} ${Math.round(a.confidence * 100)}%`).join(", ")}
@@ -139,9 +165,22 @@ export function AssistanceCard({ intervention, hypothesis, step, assisting, onGo
               {assisting ? "Doing it…" : "Do it for me"}
             </Button>
           ) : null}
-          <Button size="sm" variant="ghost" onClick={onNotHelpful} className="text-slate" data-testid="assistance-not-helpful">
-            <ThumbsDown /> Not helpful
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="text-slate" data-testid="assistance-feedback">
+                <MessageSquare /> Feedback <ChevronDown className="!size-3" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" data-testid="assistance-feedback-menu">
+              <DropdownMenuLabel>How was this?</DropdownMenuLabel>
+              {FEEDBACK_OPTIONS.map((o) => (
+                <DropdownMenuItem key={o.value} onSelect={() => onFeedback(o.value)} className="text-[13px]" data-testid={`feedback-${o.value}`}>
+                  <o.Icon className="h-3.5 w-3.5 text-slate" aria-hidden="true" />
+                  {o.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardContent>
     </Card>

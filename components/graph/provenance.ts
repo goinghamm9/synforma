@@ -1,3 +1,4 @@
+import { AUTHORITY_ORDER, TRUST_LABEL } from "@/lib/synforma/engine/evidence";
 import type { PlannerKind, Provenance, TrustState } from "@/lib/synforma/types";
 
 /**
@@ -5,30 +6,14 @@ import type { PlannerKind, Provenance, TrustState } from "@/lib/synforma/types";
  *
  * Source authority, highest first. Live observation of the actual instance
  * outranks configuration metadata, which outranks the objective text, which
- * outranks vendor documentation, which outranks model inference. See
+ * outranks vendor documentation, which outranks model inference. The order and
+ * the labels are the engine's own (lib/synforma/engine/evidence.ts), re-exported
+ * so the graph and the Science page can never drift from it. See
  * docs/KNOWLEDGE_LAYERS.md and the TrustState comment in lib/synforma/types.ts.
  */
-export const TRUST_ORDER: readonly TrustState[] = [
-  "AUTHORITATIVE_LIVE",
-  "AUTHORITATIVE_METADATA",
-  "ORGANIZATION_APPROVED",
-  "VENDOR_DOCUMENTED",
-  "OBSERVED_HIGH_CONFIDENCE",
-  "OBSERVED_LOW_CONFIDENCE",
-  "MODEL_INFERRED",
-  "UNKNOWN",
-];
+export const TRUST_ORDER: readonly TrustState[] = AUTHORITY_ORDER;
 
-export const TRUST_LABEL: Record<TrustState, string> = {
-  AUTHORITATIVE_LIVE: "Observed on the live instance",
-  AUTHORITATIVE_METADATA: "Configuration metadata",
-  ORGANIZATION_APPROVED: "Organization-approved",
-  VENDOR_DOCUMENTED: "Vendor documentation",
-  OBSERVED_HIGH_CONFIDENCE: "Observed (high confidence)",
-  OBSERVED_LOW_CONFIDENCE: "Observed (low confidence)",
-  MODEL_INFERRED: "Model-inferred",
-  UNKNOWN: "Unknown",
-};
+export { TRUST_LABEL };
 
 export type TrustTone = "verdant" | "default" | "outline" | "muted" | "amber";
 
@@ -56,7 +41,7 @@ export const TRUST_MEANING: Record<TrustState, { meaning: string; inThisBuild: s
   },
   ORGANIZATION_APPROVED: {
     meaning: "Stated by the organization: requirements, judgment flags, policy constraints and the success definition.",
-    inThisBuild: "The objective text, read by the planner (parseObjective). Requirement, objective and policy nodes carry it.",
+    inThisBuild: "The objective text, read by the planner (parseObjective). Requirement nodes carry it today; the graph builder gives objective and policy nodes the same source.",
   },
   VENDOR_DOCUMENTED: {
     meaning: "Vendor documentation and release notes, as structured change events.",
@@ -76,7 +61,7 @@ export const TRUST_MEANING: Record<TrustState, { meaning: string; inThisBuild: s
   },
   UNKNOWN: {
     meaning: "No provenance recorded.",
-    inThisBuild: "The illustrative sample graph, and graphs imported from before provenance existed.",
+    inThisBuild: "No rule assigns it. A node without any provenance (a graph saved before provenance existed) is shown with this label; the illustrative sample is labelled Illustrative instead.",
   },
 };
 

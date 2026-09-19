@@ -25,10 +25,12 @@ interface SignalsStripProps {
   signals: StruggleSignal[];
   runStartedAt: number | null;
   hesitationThresholdMs: number;
+  /** Decisions in which Synforma chose to stay quiet (intervention_withheld events). */
+  withheldCount?: number;
 }
 
 /** Everything Synforma observed in this run, as it happened. Observed, not inferred. */
-export function SignalsStrip({ signals, runStartedAt, hesitationThresholdMs }: SignalsStripProps) {
+export function SignalsStrip({ signals, runStartedAt, hesitationThresholdMs, withheldCount = 0 }: SignalsStripProps) {
   return (
     <section aria-label="Observed signals" data-testid="signals-strip">
       <div className="flex items-baseline justify-between gap-3">
@@ -53,8 +55,9 @@ export function SignalsStrip({ signals, runStartedAt, hesitationThresholdMs }: S
                 title={s.detail ?? undefined}
                 data-testid={`signal-${s.type}`}
               >
-                <meta.Icon className="h-3 w-3 text-signal" aria-hidden="true" />
+                <meta.Icon className={s.type === "error_recovery" || s.type === "validation_error" ? "h-3 w-3 text-signal" : "h-3 w-3 text-slate"} aria-hidden="true" />
                 {meta.label}
+                {s.frictionConfidence !== undefined ? <span className="mono-data text-slate">{Math.round(s.frictionConfidence * 100)}%</span> : null}
                 {s.detail ? <span className="max-w-[160px] truncate text-slate">· {s.detail}</span> : null}
                 <span className="mono-data text-slate">{runStartedAt ? clock(s.t - runStartedAt) : ""}</span>
               </li>
@@ -62,6 +65,11 @@ export function SignalsStrip({ signals, runStartedAt, hesitationThresholdMs }: S
           })}
         </ul>
       )}
+      {withheldCount ? (
+        <p className="mt-1.5 text-[11px] text-slate" data-testid="withheld-count">
+          Synforma stayed quiet {withheldCount} time{withheldCount === 1 ? "" : "s"}: each decision is recorded with its candidates.
+        </p>
+      ) : null}
     </section>
   );
 }

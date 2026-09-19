@@ -51,7 +51,7 @@ export function IndependenceSection() {
       .sort((a, b) => a.title.localeCompare(b.title));
   }, [proficiency, programs]);
 
-  const override = (state: ProficiencyState, assistanceLevel: AssistanceLevel) => setProficiency({ ...state, assistanceLevel, updatedAt: Date.now() });
+  const override = (state: ProficiencyState, assistanceLevel: AssistanceLevel) => applyOverride(setProficiency, state, assistanceLevel);
 
   return (
     <SettingsSection
@@ -119,4 +119,9 @@ export function IndependenceSection() {
       </FieldRow>
     </SettingsSection>
   );
+}
+
+/** Runs only from a click handler, never during render. */
+function applyOverride(setProficiency: (p: ProficiencyState) => void, state: ProficiencyState, assistanceLevel: AssistanceLevel) {
+  setProficiency({ ...state, assistanceLevel, updatedAt: Date.now() });
 }

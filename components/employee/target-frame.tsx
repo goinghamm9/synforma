@@ -3,7 +3,7 @@ import { forwardRef } from "react";
 import { Eye, RefreshCw } from "lucide-react";
 import { Button, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import type { FrameBox, OverlayCursor, OverlayHighlight, RunPhase } from "./use-guide-run";
+import type { FrameBox, OverlayCursor, OverlayHighlight, RunPhase, SensingStatus } from "./use-guide-run";
 
 interface TargetFrameProps {
   appName: string;
@@ -15,6 +15,8 @@ interface TargetFrameProps {
   cursor: OverlayCursor | null;
   frame: FrameBox | null;
   assisting: boolean;
+  /** Interaction sensing: on, paused by the person, or off in Settings. */
+  sensing: SensingStatus;
   onReload: () => void;
 }
 
@@ -24,10 +26,17 @@ interface TargetFrameProps {
  * viewport coordinates and are offset by the iframe's own position.
  */
 export const TargetFrame = forwardRef<HTMLIFrameElement, TargetFrameProps>(function TargetFrame(
-  { appName, currentUrl, phase, frameReady, frameError, highlight, cursor, frame, assisting, onReload },
+  { appName, currentUrl, phase, frameReady, frameError, highlight, cursor, frame, assisting, sensing, onReload },
   ref,
 ) {
   const watching = phase === "running";
+  const label = !watching ? "Not observing" : sensing === "on" ? "Synforma is watching" : sensing === "paused" ? "Watching · sensing paused" : "Watching · sensing off";
+  const sensingNote =
+    sensing === "on"
+      ? "Pointer movement and keystrokes are reduced to one-second aggregates (path efficiency, hover targets, key categories, timing). Never key values, typed text or coordinates; nothing on password fields."
+      : sensing === "paused"
+        ? "Sensing is paused: no pointer or keyboard aggregates are collected."
+        : "Interaction sensing is off in Settings: no pointer or keyboard aggregates are collected.";
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="Target application">
       <div className="flex h-9 shrink-0 items-center gap-3 border-b border-line bg-surface px-3 text-[12px]">
@@ -40,20 +49,20 @@ export const TargetFrame = forwardRef<HTMLIFrameElement, TargetFrameProps>(funct
             <button
               type="button"
               className="inline-flex cursor-default items-center gap-2 rounded-md px-2 py-1 text-[12px] text-graphite hover:bg-surface-2"
-              aria-label={watching ? "Synforma is watching. What is recorded" : "Synforma is not observing. What would be recorded"}
+              aria-label={watching ? `${label}. What is recorded` : "Synforma is not observing. What would be recorded"}
               data-testid="watching-indicator"
+              data-sensing={watching ? sensing : "idle"}
             >
               <span className="relative flex h-2 w-2 items-center justify-center">
-                <span className={cn("h-1.5 w-1.5 rounded-full", watching ? "pulse-dot bg-verdant" : "bg-mist")} />
+                <span className={cn("h-1.5 w-1.5 rounded-full", !watching ? "bg-mist" : sensing === "on" ? "pulse-dot bg-verdant" : "bg-amber")} />
               </span>
-              {watching ? "Synforma is watching" : "Not observing"}
+              {label}
               <Eye className="h-3.5 w-3.5 text-slate" aria-hidden="true" />
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="end" className="max-w-[280px] leading-relaxed">
             {watching ? "Recording now: " : "During a run Synforma records: "}
-            which workflow step is on screen, time per step, validation errors, backtracks and hesitation. No keystrokes, no screenshots.
-            Everything stays in this browser and is never sent anywhere.
+            which workflow step is on screen, time per step, validation errors, backtracks and hesitation. {sensingNote} No screenshots. Everything stays in this browser and is never sent anywhere.
           </TooltipContent>
         </Tooltip>
       </div>

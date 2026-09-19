@@ -24,7 +24,7 @@ const EVIDENCE: Record<FrictionState, string> = {
   VISUAL_SEARCH:
     "Sensing is on, the step's target control is known but has never been hovered or approached, more than 6 s have passed on the step and nothing was typed. An inefficient pointer path (more than 300 px travelled at a mean path efficiency below 0.55), six or more direction changes, and more than 12 s on the step add weight. Cut to a third while an error is recent.",
   DECISION_UNCERTAINTY:
-    "The target control was located, hovered for at least 0.6 s or approached at least twice, and no click followed while requirements are still pending or the step commits. Hovering beyond 1.2 s, repeated approaches, withdrawals and more than 8 s without input add weight; a visible validation message halves it.",
+    "Sensing is on, the step's target control was located (hovered, or approached at least twice) and no click followed while requirements are still pending or the step commits. Full weight needs at least 0.6 s of hover or two approaches, otherwise it is cut to 40%. Hovering beyond 1.2 s, repeated approaches, withdrawals and more than 8 s without input add weight; a visible validation message halves it.",
   POLICY_UNCERTAINTY:
     "The decision-uncertainty evidence, on a judgment step whose values the objective constrains through accepted values or a policy sentence. Scored at 0.8 × that weight.",
   WORKFLOW_KNOWLEDGE_GAP:
@@ -139,8 +139,8 @@ export function FrictionStates() {
       <Prose className="mt-8">
         <p>
           <strong>Confidence and alternatives.</strong> The winning state&rsquo;s confidence is its share of all evidence weight, plus 0.15 when
-          that weight exceeds 0.8, clamped to 0.05–0.95. The next three states holding more than a tenth of the weight are stored as
-          alternatives. Every inference is recorded with its evidence strings and rule version; it raises a struggle signal only from a
+          that weight exceeds 0.8, clamped to 0.05–0.95. Up to three further states whose raw score exceeds 0.1 are stored as
+          alternatives, each with its share of the weight. Every inference is recorded with its evidence strings and rule version; it raises a struggle signal only from a
           confidence of 0.45, once per state per step unless confidence grows by 0.1. Decision uncertainty deliberately suppresses pointers: the
           control was already found, so a highlight would add load without information.
         </p>

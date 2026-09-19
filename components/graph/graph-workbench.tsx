@@ -2,7 +2,7 @@
 import * as React from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowUpRight, Play, Search, Sparkle, Square, X } from "lucide-react";
+import { ArrowUpRight, CircleDashed, Play, Search, Square, X } from "lucide-react";
 import type { GraphNode, NodeType, Program, WorkGraph } from "@/lib/synforma/types";
 import { useSynforma } from "@/lib/synforma/store";
 import { Button } from "@/components/ui/button";
@@ -314,7 +314,7 @@ export function GraphWorkbench() {
             )}
             data-testid="graph-inferred-toggle"
           >
-            <Sparkle className="h-3 w-3" aria-hidden="true" />
+            <CircleDashed className="h-3 w-3" aria-hidden="true" />
             Inferred only
             <span className="mono-data text-[10px] text-slate">{inferredIds.length}</span>
           </button>
@@ -400,7 +400,7 @@ export function GraphWorkbench() {
         </div>
 
         <aside className="hidden w-[380px] shrink-0 flex-col overflow-y-auto border-l border-line bg-surface lg:flex scrollbar-thin" aria-label="Node details">
-          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} className="min-h-full" plannerKind={program?.planner} /> : <NodeDetailEmpty />}
+          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} className="min-h-full" plannerKind={program?.planner} sample={isSample} /> : <NodeDetailEmpty />}
         </aside>
       </div>
 
@@ -408,7 +408,7 @@ export function GraphWorkbench() {
         <DialogContent side="right" className="max-w-sm p-0 pt-10">
           <DialogTitle className="sr-only">Node details</DialogTitle>
           <DialogDescription className="sr-only">Details of the selected Work Graph node.</DialogDescription>
-          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} plannerKind={program?.planner} /> : null}
+          {selectedNode ? <NodeDetail key={selectedNode.id} graph={graph} node={selectedNode} onSelect={selectFromPanel} plannerKind={program?.planner} sample={isSample} /> : null}
         </DialogContent>
       </Dialog>
     </div>

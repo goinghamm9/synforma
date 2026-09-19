@@ -1,9 +1,28 @@
 "use client";
 import Link from "next/link";
-import { Check, Circle, Loader2, RotateCcw } from "lucide-react";
+import { Check, Circle, Loader2, RotateCcw, TrendingDown } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardHeader } from "@/components/ui";
+import { LEVEL_LABEL } from "@/lib/synforma/engine/proficiency";
 import type { Requirement, Run, RunEvent } from "@/lib/synforma/types";
 import { formatDuration } from "@/lib/utils";
+import type { FadedStep } from "./use-guide-run";
+
+/** Steps whose assistance level faded at the end of this run. */
+export function FadedSteps({ steps }: { steps: FadedStep[] }) {
+  if (!steps.length) return null;
+  return (
+    <ul className="mt-3 space-y-1" aria-label="Less help next time" data-testid="faded-steps">
+      {steps.map((f) => (
+        <li key={f.stepId} className="flex items-start gap-2 rounded-md bg-verdant-soft/60 px-2.5 py-2 text-[12px] text-graphite" data-testid="faded-step" data-step-id={f.stepId}>
+          <TrendingDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-verdant" aria-hidden="true" />
+          <span>
+            Less help next time on <span className="font-medium text-ink">{f.title}</span> <span className="mono-data text-slate">· now {LEVEL_LABEL[f.level]}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 interface CompletionCardProps {
   run: Run;
@@ -11,11 +30,12 @@ interface CompletionCardProps {
   events: RunEvent[];
   outcomeUrl: string | null;
   starting: boolean;
+  fadedSteps: FadedStep[];
   onStartAnother: () => void;
 }
 
 /** The run ended on the outcome screen: what was verified there, and what it took. */
-export function CompletionCard({ run, requirements, events, outcomeUrl, starting, onStartAnother }: CompletionCardProps) {
+export function CompletionCard({ run, requirements, events, outcomeUrl, starting, fadedSteps, onStartAnother }: CompletionCardProps) {
   const fields = requirements.filter((r) => r.kind === "field");
   const met = new Set(run.requirementsMet);
   const allMet = fields.length > 0 && fields.every((r) => met.has(r.id));
@@ -66,8 +86,11 @@ export function CompletionCard({ run, requirements, events, outcomeUrl, starting
         </dl>
         <p className="mt-2 text-[11px] text-slate">
           {run.cohort === "control" ? "Control cohort: assistance was withheld for measurement." : "Treatment cohort."} UI {run.uiVariant ?? "v1"}
-          {run.regroundings ? ` · ${run.regroundings} semantic re-grounding${run.regroundings === 1 ? "" : "s"}` : ""}.
+          {run.regroundings ? ` · ${run.regroundings} semantic re-grounding${run.regroundings === 1 ? "" : "s"}` : ""}
+          {run.getItDone ? " · Get It Done was used" : ""}
+          {run.withheld ? ` · stayed quiet ${run.withheld}×` : ""}.
         </p>
+        <FadedSteps steps={fadedSteps} />
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button onClick={onStartAnother} disabled={starting} data-testid="start-another">
             {starting ? <Loader2 className="animate-spin" /> : <RotateCcw />}
@@ -82,7 +105,7 @@ export function CompletionCard({ run, requirements, events, outcomeUrl, starting
   );
 }
 
-export function AbandonedCard({ run, starting, onStartAnother }: { run: Run; starting: boolean; onStartAnother: () => void }) {
+export function AbandonedCard({ run, starting, fadedSteps = [], onStartAnother }: { run: Run; starting: boolean; fadedSteps?: FadedStep[]; onStartAnother: () => void }) {
   const duration = run.endedAt ? run.endedAt - run.startedAt : null;
   return (
     <Card data-testid="abandoned-card">
@@ -94,7 +117,8 @@ export function AbandonedCard({ run, starting, onStartAnother }: { run: Run; sta
         </p>
       </CardHeader>
       <CardContent className="p-4">
-        <Button onClick={onStartAnother} disabled={starting} data-testid="start-another">
+        <FadedSteps steps={fadedSteps} />
+        <Button onClick={onStartAnother} disabled={starting} className="mt-3 first:mt-0" data-testid="start-another">
           {starting ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           Start another run
         </Button>

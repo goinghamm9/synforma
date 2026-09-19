@@ -102,14 +102,20 @@ export interface NodeDetailProps {
   className?: string;
   /** Planner of the program that owns this graph: names the planner behind an inference when the node itself does not. */
   plannerKind?: PlannerKind;
+  /** The graph is the hand-written illustrative sample, not a discovered one. */
+  sample?: boolean;
 }
 
-/** "How Synforma knows this": source, trust state and time from the node's provenance. Sample nodes carry none and are labelled illustrative. */
-function ProvenanceBlock({ node, plannerKind }: { node: GraphNode; plannerKind?: PlannerKind }) {
+/**
+ * "How Synforma knows this": source, trust state and time from the node's provenance.
+ * Sample nodes carry none and are labelled illustrative; a discovered node without
+ * provenance (a graph saved before provenance existed) is labelled unknown, never illustrative.
+ */
+function ProvenanceBlock({ node, plannerKind, sample }: { node: GraphNode; plannerKind?: PlannerKind; sample?: boolean }) {
   const p = node.provenance;
   const observedAt = p && Number.isFinite(p.observedAt) ? p.observedAt : null;
   return (
-    <div className="border-b border-line px-5 py-4" data-testid="node-provenance" data-trust={p?.trust ?? "none"}>
+    <div className="border-b border-line px-5 py-4" data-testid="node-provenance" data-trust={p?.trust ?? (sample ? "illustrative" : "none")}>
       <p className="eyebrow">How Synforma knows this</p>
       {p ? (
         <>
@@ -124,7 +130,7 @@ function ProvenanceBlock({ node, plannerKind }: { node: GraphNode; plannerKind?:
           </div>
           {observedAt !== null ? <p className="mt-2 text-[11px] text-slate">Observed {DATE_FMT.format(new Date(observedAt))}</p> : null}
         </>
-      ) : (
+      ) : sample ? (
         <>
           <div className="mt-2">
             <Badge variant="muted" data-testid="trust-badge">
@@ -133,12 +139,21 @@ function ProvenanceBlock({ node, plannerKind }: { node: GraphNode; plannerKind?:
           </div>
           <p className="mt-2 text-xs leading-relaxed text-slate">Part of the hand-written sample. Nothing here was observed or inferred by Synforma.</p>
         </>
+      ) : (
+        <>
+          <div className="mt-2">
+            <Badge variant="muted" data-testid="trust-badge">
+              {trustLabel("UNKNOWN")}
+            </Badge>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-slate">No provenance was recorded for this node. Graphs saved before provenance existed carry none; re-running discovery records it.</p>
+        </>
       )}
     </div>
   );
 }
 
-export function NodeDetail({ graph, node, onSelect, className, plannerKind }: NodeDetailProps) {
+export function NodeDetail({ graph, node, onSelect, className, plannerKind, sample }: NodeDetailProps) {
   const data = React.useMemo(() => describeNodeData(node), [node]);
   const groups = React.useMemo(() => {
     const map = new Map<string, { edgeType: EdgeType; direction: "out" | "in"; title: string; items: { node: GraphNode; label?: string }[] }>();
@@ -176,7 +191,7 @@ export function NodeDetail({ graph, node, onSelect, className, plannerKind }: No
         {node.description ? <p className="mt-4 text-sm leading-relaxed text-graphite">{node.description}</p> : null}
       </div>
 
-      <ProvenanceBlock node={node} plannerKind={plannerKind} />
+      <ProvenanceBlock node={node} plannerKind={plannerKind} sample={sample} />
 
       {data.length ? (
         <div className="border-b border-line px-5 py-4">

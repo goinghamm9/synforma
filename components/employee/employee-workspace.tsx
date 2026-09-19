@@ -7,6 +7,7 @@ import { SynformaMark } from "@/components/brand/logo";
 import { selectActiveProgram, useSynforma } from "@/lib/synforma/store";
 import type { Program } from "@/lib/synforma/types";
 import { ApprovalDialog } from "./approval-dialog";
+import { QUIET_TECHNIQUES } from "./assistance-card";
 import { SynformaPanel } from "./synforma-panel";
 import { TargetFrame } from "./target-frame";
 import { useGuideRun } from "./use-guide-run";
@@ -30,6 +31,8 @@ function GuideWorkspace({ program }: { program: Program }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const run = useGuideRun(program, iframeRef);
   const currentUrl = run.page?.url ?? (run.frameReady ? run.startUrl : null);
+  // A quiet note (the person already found the control) never draws an assistance ring, whatever the anchor says.
+  const highlight = run.highlight?.kind === "assistance" && run.intervention && QUIET_TECHNIQUES.has(run.intervention.techniqueId) ? null : run.highlight;
   return (
     <div className="flex flex-1 flex-col lg:h-[calc(100vh-3rem)] lg:flex-row lg:overflow-hidden" data-testid="employee-workspace">
       <div className="flex h-[68vh] min-h-[420px] flex-col lg:h-auto lg:min-h-0 lg:w-[62%] lg:flex-none">
@@ -40,10 +43,11 @@ function GuideWorkspace({ program }: { program: Program }) {
           phase={run.phase}
           frameReady={run.frameReady}
           frameError={run.frameError}
-          highlight={run.highlight}
+          highlight={highlight}
           cursor={run.cursor}
           frame={run.frame}
-          assisting={run.assistingStepId !== null}
+          assisting={run.assistingStepId !== null || run.getItDone.status === "running" || run.getItDone.status === "committing"}
+          sensing={run.sensing}
           onReload={() => void run.reloadFrame()}
         />
       </div>

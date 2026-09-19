@@ -1,22 +1,25 @@
 "use client";
 import * as React from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { Cpu, Loader2, RotateCcw } from "lucide-react";
+import { Cpu, Loader2, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Skeleton } from "@/components/ui";
 import { useSynforma } from "@/lib/synforma/store";
 import { IframeDriver } from "@/lib/synforma/interaction/driver";
 import { explore, type DiscoveredState } from "@/lib/synforma/engine/explorer";
 import { runWorkflow } from "@/lib/synforma/engine/runner";
-import { reactToSignal } from "@/lib/synforma/engine/adoption";
-import { PERSONAS } from "@/lib/synforma/engine/synthetic";
+import { decide } from "@/lib/synforma/engine/adoption";
+import { FRICTION_SHORT } from "@/lib/synforma/engine/friction";
+import { PERSONAS, type Persona } from "@/lib/synforma/engine/synthetic";
 import { MINIMUM_RUNS } from "@/lib/synforma/engine/metrics";
+import { DO_NOTHING_ID } from "@/lib/synforma/science/techniques";
 import { createPlanner, fetchPlannerStatus, resolvePlannerKind } from "@/lib/synforma/planner";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
 import { cloneGraph, countByType, createGraph } from "@/lib/synforma/graph/work-graph";
 import { DEFAULT_CONTEXT, DEFAULT_OBJECTIVE, SANDBOX_APP } from "@/lib/synforma/demo";
-import type { ApprovalRequest, PageModel, PlannerKind, Program, Run, RunEventType, StruggleType, WorkGraph } from "@/lib/synforma/types";
+import type { ApprovalRequest, AssistancePreference, FrictionState, Hypothesis, PageModel, PlannerKind, Program, Run, RunEventType, StruggleType, WorkGraph } from "@/lib/synforma/types";
 import { cn, shortId } from "@/lib/utils";
-import { PHASE_INDEX, type ConnectionInfo, type LogLevel, type LogLine, type OverlayTarget, type PhaseId, type UiVariant } from "./types";
+import { PHASE_INDEX, PREFERENCE_LABEL, type ChangeRecord, type ConnectionInfo, type LogLevel, type LogLine, type OverlayTarget, type PhaseId, type UiVariant } from "./types";
 import { clearPrefs, readPrefs, readSandboxUiVariant, writePrefs } from "./demo-prefs";
 import { useStoreHydrated } from "./use-store-hydrated";
 import { PhaseRail } from "./phase-rail";
@@ -45,7 +48,7 @@ import { MeasurePanel } from "./phases/measure-panel";
 const EMPTY_COUNTERS = { screens: 0, actions: 0, fields: 0, objects: 0, states: 0 };
 
 const INITIAL_DISCOVERY: DiscoveryState = { status: "idle", log: [], counters: EMPTY_COUNTERS, stats: null, error: null, startedAt: null, planned: null };
-const INITIAL_ACT: ActState = { status: "idle", runId: null, log: [], result: null, currentStepId: null, stepStatus: {}, startedAt: null, endedAt: null, error: null, regroundings: 0, uiVariant: null };
+const INITIAL_ACT: ActState = { status: "idle", runId: null, log: [], result: null, currentStepId: null, stepStatus: {}, startedAt: null, endedAt: null, error: null, regroundings: 0, uiVariant: null, changes: [] };
 const INITIAL_SYNTH: SynthState = { status: "idle", currentPersonaId: null, completed: 0, error: null };
 
 const STRUGGLE_EVENTS: Partial<Record<RunEventType, { type: StruggleType; magnitude: number }>> = {
@@ -58,6 +61,55 @@ const STRUGGLE_EVENTS: Partial<Record<RunEventType, { type: StruggleType; magnit
 };
 
 const MAX_LOG = 400;
+
+/** Synthetic users run under the default preference; nothing is ever displayed to them. */
+const SYNTHETIC_PREFERENCE: AssistancePreference = "work_with_me";
+
+/**
+ * Friction states for synthetic runs are MAPPED from the persona's known capability limit
+ * and the runner's simulated struggle event; they are not inferred from pointer or keyboard
+ * windows. Every such event is marked `simulated` and carries this rule version.
+ */
+const SYNTHETIC_FRICTION_RULE = "synthetic-capability-map-v0";
+
+function simulatedFriction(type: RunEventType, data: Record<string, unknown> | undefined, persona: Persona): { state: FrictionState; confidence: number; evidence: string[] } | null {
+  const reason = typeof data?.reason === "string" ? data.reason : typeof data?.error === "string" ? data.error : "";
+  const limits = Object.entries(persona.capabilities)
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  const provenance = `mapped from the simulation's capability limit${limits.length ? ` (no ${limits.join(", no ")})` : ""}, not inferred from interaction windows`;
+  const who = `synthetic persona "${persona.name}"`;
+  let state: FrictionState | null = null;
+  let observed = "";
+  switch (type) {
+    case "hesitation":
+    case "action_failed":
+      if (/not visible|did not find|could not|no element|not found/i.test(reason) || !persona.capabilities.expand || !persona.capabilities.synonyms) {
+        state = "VISUAL_SEARCH";
+        observed = `${who} did not locate the control${reason ? `: ${reason}` : ""}`;
+      } else {
+        state = "ERROR_RECOVERY";
+        observed = `${who} hit a failed action${reason ? `: ${reason}` : ""}`;
+      }
+      break;
+    case "validation_error":
+      state = "ERROR_RECOVERY";
+      observed = `${who} triggered a validation message`;
+      break;
+    case "run_abandoned":
+      state = reason === "validation" ? "ERROR_RECOVERY" : "WORKFLOW_FRICTION";
+      observed = reason === "validation" ? `${who} gave up on a validation error` : `${who} abandoned the run${reason ? ` (${reason})` : ""}`;
+      break;
+    case "backtrack":
+    case "wrong_screen":
+      state = "WORKFLOW_KNOWLEDGE_GAP";
+      observed = `${who} left the expected screen`;
+      break;
+    default:
+      return null;
+  }
+  return { state, confidence: 0.6, evidence: [observed, provenance] };
+}
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -133,6 +185,7 @@ export function MissionControl() {
     return events.filter((e) => ids.has(e.runId));
   }, [events, programRuns]);
   const programInterventions = React.useMemo(() => Object.values(interventionsMap).filter((i) => i.programId === programId), [interventionsMap, programId]);
+  const programHypotheses = React.useMemo<Record<string, Hypothesis>>(() => Object.fromEntries(Object.entries(hypotheses).filter(([, h]) => h.programId === programId)), [hypotheses, programId]);
   const storeGraph = program ? (graphs[program.graphId] ?? null) : null;
 
   // ─────────────── transient UI state ───────────────
@@ -145,6 +198,9 @@ export function MissionControl() {
   const pendingGraph = React.useRef<WorkGraph | null>(null);
   const approvalResolver = React.useRef<((d: "granted" | "denied") => void) | null>(null);
   const approvalRequest = React.useRef<ApprovalRequest | null>(null);
+  /** Human-readable names of the last re-grounding reported by the driver (the runner's event carries the semantic key). */
+  const lastHeal = React.useRef<{ from: string; to: string } | null>(null);
+  const changeSeq = React.useRef(0);
 
   const [phase, setPhaseState] = React.useState<PhaseId>("connect");
   const [phaseReady, setPhaseReady] = React.useState(false);
@@ -265,8 +321,9 @@ export function MissionControl() {
     const s = useSynforma.getState();
     const p = s.activeProgramId ? (s.programs[s.activeProgramId] ?? null) : null;
     if (p) {
+      // The work context lives on the Program; prefs.context is the pre-migration location and only a fallback.
       const prefs = readPrefs(p.id);
-      setContext({ ...DEFAULT_CONTEXT, ...(prefs.context ?? {}) });
+      setContext({ ...DEFAULT_CONTEXT, ...(prefs.context ?? {}), ...(p.context ?? {}) });
       const max = maxPhaseIndex(p, true);
       const wanted = prefs.phase && PHASE_INDEX[prefs.phase] <= max ? prefs.phase : defaultPhaseFor(p);
       setPhaseState(wanted);
@@ -413,6 +470,7 @@ export function MissionControl() {
           title: "New program",
           objectiveText,
           application: { name: SANDBOX_APP.name, baseUrl: SANDBOX_APP.baseUrl },
+          context: ctx,
           graphId: shortId("g"),
           status: "discovering",
           planner: kind,
@@ -424,11 +482,11 @@ export function MissionControl() {
         s.saveGraph(createGraph(prog.graphId));
         s.addAudit({ actor: "admin", action: "Program created", programId: prog.id, target: SANDBOX_APP.name, detail: `planner: ${kind}` });
       } else {
-        prog = { ...prog, objectiveText, planner: kind };
+        prog = { ...prog, objectiveText, planner: kind, context: ctx };
         s.upsertProgram(prog);
       }
       setContext(ctx);
-      writePrefs(prog.id, { context: ctx, phase: "discover" });
+      writePrefs(prog.id, { phase: "discover" });
       const existing = s.discoveries[prog.id];
       if (mode === "replan" && existing?.length) {
         const base = s.graphs[prog.graphId] ?? createGraph(prog.graphId);
@@ -487,10 +545,13 @@ export function MissionControl() {
     s.addAudit({ actor: "agent", action: "Run started", runId, programId: prog.id, detail: `Act mode · UI ${variant} · workflow by ${prog.planner} planner` });
     setAct({ ...INITIAL_ACT, status: "running", runId, startedAt, uiVariant: variant });
     driver.paceMs = 350;
+    lastHeal.current = null;
     driverLogSink.current = (m) => {
       const heal = /^Re-grounded "(.+?)" → "(.+?)"/.exec(m);
-      if (heal) pushActLog("heal", `Self-healed: ${heal[1]} → ${heal[2]}`);
-      else if (/could not/i.test(m)) pushActLog("warn", m);
+      if (heal) {
+        lastHeal.current = { from: heal[1], to: heal[2] };
+        pushActLog("heal", `Self-healed: ${heal[1]} → ${heal[2]}`);
+      } else if (/could not/i.test(m)) pushActLog("warn", m);
     };
     let regroundings = 0;
     try {
@@ -498,7 +559,7 @@ export function MissionControl() {
         driver,
         workflow,
         requirements: parsed.requirements,
-        context,
+        context: prog.context ?? context,
         actor: "agent",
         requireApprovalForCommit: s.settings.requireApprovalForCommit,
         signal: ac.signal,
@@ -517,10 +578,19 @@ export function MissionControl() {
                 store.addAudit({ actor: "agent", action: d?.action?.label ?? message ?? "Action", target: d?.action?.targetName, runId, programId: prog.id, detail: d?.regrounded ? `self-healed → ${d.regroundedTo ?? "?"}` : undefined });
                 break;
               }
-              case "action_regrounded":
+              case "action_regrounded": {
                 regroundings += 1;
-                setAct((a) => ({ ...a, regroundings }));
+                // The runner reports the semantic key it re-grounded to; the driver logged the accessible name just before.
+                const d = data as { from?: string; to?: string; change?: { screen?: string | null; affectedStep?: string; risk?: string } } | undefined;
+                const from = d?.from ?? "?";
+                const heal = lastHeal.current;
+                const to = heal && heal.from === from ? heal.to : (d?.to ?? "?");
+                const change: ChangeRecord = { id: ++changeSeq.current, t: Date.now(), stepId, screen: d?.change?.screen ?? step?.route ?? null, from, to, risk: d?.change?.risk ?? "low" };
+                setAct((a) => ({ ...a, regroundings, changes: [...a.changes, change] }));
+                pushActLog("change", `UI change detected on ${change.screen ?? "unknown screen"}: '${change.from}' is now '${change.to}' · ${change.risk} risk · re-verified by execution`);
+                store.addAudit({ actor: "synforma", action: "UI change detected", target: change.screen ?? undefined, runId, programId: prog.id, detail: `'${change.from}' is now '${change.to}' · ${change.risk} risk · ${step?.title ?? stepId ?? "step"} · re-verified by execution` });
                 break;
+              }
               case "approval_requested":
                 pushActLog("approval", message ?? "Approval requested");
                 store.addAudit({ actor: "agent", action: "Approval requested", target: step?.title, runId, programId: prog.id, approval: "requested", detail: message });
@@ -635,7 +705,10 @@ export function MissionControl() {
     setSynth({ status: "running", currentPersonaId: null, completed: 0, error: null });
     let completed = 0;
     let newInterventions = 0;
+    let quiet = 0;
     let reactChain: Promise<void> = Promise.resolve();
+    /** Per-run decision tally: proposals count as "shown" for the frequency cap and budget, exactly as they would for a person. */
+    const tally = new Map<string, { proposed: number; lastAt: number | null }>();
 
     const react = (signalId: string) => {
       reactChain = reactChain.then(async () => {
@@ -645,8 +718,12 @@ export function MissionControl() {
         if (!signal || !program) return;
         const runIdsOf = () => new Set(Object.values(useSynforma.getState().runs).filter((r) => r.programId === prog.id).map((r) => r.id));
         const before = new Set(Object.keys(st.interventions));
+        const runTally = tally.get(signal.runId) ?? { proposed: 0, lastAt: null };
+        tally.set(signal.runId, runTally);
+        const step = workflow.steps.find((x) => x.id === signal.stepId);
+        const stateLabel = signal.frictionState ? FRICTION_SHORT[signal.frictionState] : signal.type;
         try {
-          const intervention = await reactToSignal(signal, {
+          const decision = await decide(signal, {
             planner,
             program,
             getSignalsForStep: (stepId) => {
@@ -657,11 +734,52 @@ export function MissionControl() {
             getRuns: () => Object.values(useSynforma.getState().runs).filter((r) => r.programId === prog.id),
             saveHypothesis: (h) => useSynforma.getState().addHypothesis(h),
             saveIntervention: (i) => useSynforma.getState().upsertIntervention(i),
+            preference: SYNTHETIC_PREFERENCE,
+            proficiency: useSynforma.getState().proficiency[`${prog.id}/${signal.stepId}`],
+            shownThisRun: runTally.proposed,
+            sinceLastShownMs: runTally.lastAt !== null ? Date.now() - runTally.lastAt : undefined,
           });
-          if (intervention && !before.has(intervention.id)) {
+          if (!decision) return;
+          const store = useSynforma.getState();
+          if (decision.selected === DO_NOTHING_ID || !decision.intervention) {
+            // DO_NOTHING won: recorded as deliberately as an intervention (false-intervention protection).
+            quiet += 1;
+            store.addEvent({
+              runId: signal.runId,
+              type: "intervention_withheld",
+              stepId: signal.stepId,
+              data: {
+                selected: DO_NOTHING_ID,
+                candidates: decision.candidates.slice(0, 5),
+                reason: decision.reason,
+                frictionState: signal.frictionState ?? null,
+                frictionConfidence: signal.frictionConfidence ?? null,
+                signalType: signal.type,
+                hypothesisId: decision.hypothesis.id,
+                preference: SYNTHETIC_PREFERENCE,
+                simulated: true,
+              },
+              message: `Stayed quiet: ${stateLabel}`,
+            });
+            const run = store.runs[signal.runId];
+            if (run) store.updateRun(run.id, { withheld: (run.withheld ?? 0) + 1 });
+            return;
+          }
+          const intervention = decision.intervention;
+          runTally.proposed += 1;
+          runTally.lastAt = Date.now();
+          const isNew = !before.has(intervention.id);
+          // Nothing is displayed to a synthetic user: the selection is recorded as a proposal, never as "shown".
+          store.addEvent({
+            runId: signal.runId,
+            type: "note",
+            stepId: signal.stepId,
+            data: { decision: "intervene", interventionId: intervention.id, techniqueId: intervention.techniqueId, reused: !isNew, candidates: decision.candidates.slice(0, 5), frictionState: signal.frictionState ?? null, hypothesisId: decision.hypothesis.id, simulated: true },
+            message: `Would show "${intervention.content.title}" (${intervention.techniqueId}) — proposed in simulation, not displayed`,
+          });
+          if (isNew) {
             newInterventions += 1;
-            const step = workflow.steps.find((x) => x.id === intervention.stepId);
-            useSynforma.getState().addAudit({ actor: "synforma", action: "Intervention proposed", target: step?.title, programId: prog.id, runId: signal.runId, detail: `${intervention.techniqueId} · from a ${signal.type} signal in a synthetic run` });
+            store.addAudit({ actor: "synforma", action: "Intervention proposed", target: step?.title, programId: prog.id, runId: signal.runId, detail: `${intervention.techniqueId} · from a ${stateLabel} signal in a synthetic run · scored against do-nothing` });
           }
         } catch (e) {
           useSynforma.getState().addAudit({ actor: "synforma", action: "Diagnosis failed", programId: prog.id, runId: signal.runId, detail: errorMessage(e) });
@@ -676,15 +794,15 @@ export function MissionControl() {
       const startedAt = Date.now();
       const variant = readSandboxUiVariant();
       const s = useSynforma.getState();
-      s.addRun({ id: runId, programId: prog.id, workflowId: workflow.id, actor: "synthetic", persona: persona.name, mode: "guide", startedAt, interventionIds: [], uiVariant: variant, requirementsMet: [], regroundings: 0 });
-      s.addEvent({ runId, type: "run_started", data: { actor: "synthetic", persona: persona.id, capabilities: { ...persona.capabilities }, simulated: true } });
+      s.addRun({ id: runId, programId: prog.id, workflowId: workflow.id, actor: "synthetic", persona: persona.name, mode: "guide", startedAt, interventionIds: [], uiVariant: variant, requirementsMet: [], regroundings: 0, preference: SYNTHETIC_PREFERENCE, assistanceShown: 0, withheld: 0 });
+      s.addEvent({ runId, type: "run_started", data: { actor: "synthetic", persona: persona.id, capabilities: { ...persona.capabilities }, preference: SYNTHETIC_PREFERENCE, simulated: true } });
       s.addAudit({ actor: "synthetic", action: `Simulation started: ${persona.name}`, runId, programId: prog.id, detail: "synthetic user — labeled simulation, excluded from human timing" });
       try {
         const result = await runWorkflow({
           driver,
           workflow,
           requirements: parsed.requirements,
-          context,
+          context: prog.context ?? context,
           actor: "synthetic",
           capabilities: persona.capabilities,
           requireApprovalForCommit: false,
@@ -695,7 +813,27 @@ export function MissionControl() {
               store.addEvent({ runId, type, data, stepId, message });
               const struggle = STRUGGLE_EVENTS[type];
               if (struggle && stepId) {
-                const signal = store.addSignal({ runId, stepId, type: struggle.type, magnitude: struggle.magnitude, t: Date.now(), detail: message ?? (data?.reason as string | undefined) });
+                const friction = simulatedFriction(type, data, persona);
+                if (friction) {
+                  store.addEvent({
+                    runId,
+                    type: "friction_inferred",
+                    stepId,
+                    data: { state: friction.state, confidence: friction.confidence, evidence: friction.evidence, alternatives: [], ruleVersion: SYNTHETIC_FRICTION_RULE, simulated: true, persona: persona.id },
+                    message: `Simulated state: ${FRICTION_SHORT[friction.state]} (${persona.name})`,
+                  });
+                }
+                const signal = store.addSignal({
+                  runId,
+                  stepId,
+                  type: struggle.type,
+                  magnitude: struggle.magnitude,
+                  t: Date.now(),
+                  detail: message ?? (data?.reason as string | undefined),
+                  frictionState: friction?.state,
+                  frictionConfidence: friction?.confidence,
+                  evidence: friction?.evidence,
+                });
                 react(signal.id);
               }
             },
@@ -719,7 +857,7 @@ export function MissionControl() {
     const stopped = ac.signal.aborted;
     setSynth({ status: stopped ? "stopped" : "done", currentPersonaId: null, completed, error: null });
     toast(stopped ? `Simulation stopped after ${completed} synthetic run${completed === 1 ? "" : "s"}` : `${completed} synthetic runs finished (simulation)`, {
-      description: newInterventions ? `${newInterventions} intervention${newInterventions === 1 ? "" : "s"} proposed from observed struggle` : "No new interventions proposed",
+      description: `${newInterventions ? `${newInterventions} intervention${newInterventions === 1 ? "" : "s"} proposed from observed struggle` : "No new interventions proposed"} · Synforma stayed quiet ${quiet} time${quiet === 1 ? "" : "s"}`,
     });
   }, [context, hideOverlays, programId]);
 
@@ -847,7 +985,7 @@ export function MissionControl() {
     );
   else if (!program) panel = <PanelSkeleton />;
   else if (phase === "understand")
-    panel = <UnderstandPanel program={program} plannerLabel={plannerLabel} plannerName={plannerName} onApprove={approveProgram} onEdit={() => setPhase("objective")} onDiscover={() => setPhase("discover")} />;
+    panel = <UnderstandPanel program={program} graph={storeGraph} plannerLabel={plannerLabel} plannerName={plannerName} onApprove={approveProgram} onEdit={() => setPhase("objective")} onDiscover={() => setPhase("discover")} />;
   else if (phase === "act")
     panel = (
       <ActPanel
@@ -865,8 +1003,11 @@ export function MissionControl() {
       />
     );
   else if (phase === "guide") panel = <GuidePanel state={synth} program={program} runs={programRuns} events={programEvents} onRunSynthetic={() => void runSynthetic()} onStop={stopSynthetic} onOpenRun={setDrawerRun} />;
-  else if (phase === "adapt") panel = <AdaptPanel program={program} interventions={programInterventions} hypotheses={hypotheses} runs={programRuns} onGoGuide={() => setPhase("guide")} />;
-  else panel = <MeasurePanel program={program} runs={programRuns} events={programEvents} audit={audit} onOpenRun={setDrawerRun} onExport={exportJSON} onCopy={() => void copyJSON()} />;
+  else if (phase === "adapt") panel = <AdaptPanel program={program} interventions={programInterventions} hypotheses={programHypotheses} runs={programRuns} events={programEvents} onGoGuide={() => setPhase("guide")} />;
+  else
+    panel = (
+      <MeasurePanel program={program} runs={programRuns} events={programEvents} audit={audit} hypotheses={programHypotheses} interventions={programInterventions} onOpenRun={setDrawerRun} onExport={exportJSON} onCopy={() => void copyJSON()} />
+    );
 
   const approvalStep = approval && program?.workflow ? program.workflow.steps.find((s) => s.id === approval.stepId) : undefined;
 
@@ -897,6 +1038,19 @@ export function MissionControl() {
           <Cpu className="h-3 w-3" aria-hidden="true" />
           {plannerLabel}
         </Badge>
+        {ready ? (
+          <Link
+            href="/settings"
+            className="hidden items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] text-slate transition-colors hover:bg-surface-2 hover:text-ink lg:inline-flex"
+            title="Assistance preference for new runs · change it in Settings"
+            data-testid="assistance-preference"
+            data-preference={settings.assistancePreference}
+          >
+            <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />
+            <span className="text-mist">Assistance</span>
+            {PREFERENCE_LABEL[settings.assistancePreference]}
+          </Link>
+        ) : null}
         <div className="ml-auto flex items-center gap-2">
           {busyLabel ? (
             <span className="inline-flex items-center gap-1.5 text-xs text-slate">

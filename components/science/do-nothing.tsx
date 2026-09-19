@@ -1,4 +1,4 @@
-import { interruptionMultiplier, LEVEL_LABEL, LEVEL_ORDER } from "@/lib/synforma/engine/proficiency";
+import { DEFAULT_INTERVENTION_BUDGET, interruptionMultiplier, LEVEL_LABEL, LEVEL_ORDER } from "@/lib/synforma/engine/proficiency";
 import type { AssistanceLevel } from "@/lib/synforma/types";
 import { Cite, Prose } from "./shell";
 
@@ -17,6 +17,10 @@ const TERMS: { term: string; meaning: string }[] = [
   { term: "+ 0.30 for Stay out of the way", meaning: "The person's assistance preference, chosen in Settings and recorded on each run." },
   { term: "+ 0.25 within 20 s of the last help", meaning: "The frequency cap. The same 20 s add 0.25 to every technique's repetition penalty." },
   { term: "− 0.15 for hesitation before a commit", meaning: "Decision uncertainty on a commit step is the one case where a single line of clarification is worth the interruption." },
+  {
+    term: `+ 0.60 once the attention budget is spent`,
+    meaning: `Interventions are budgeted per run, ${DEFAULT_INTERVENTION_BUDGET} by default. Once that many have been shown, silence is all but guaranteed for the rest of the run.`,
+  },
 ];
 
 export function DoNothingPolicy() {
@@ -40,7 +44,8 @@ export function DoNothingPolicy() {
           + 0.50 · (interruptionMultiplier − 1)   when above 1
           + 0.30 · [preference is stay out of the way]
           + 0.25 · [help was shown less than 20 s ago]
-          − 0.15 · [decision uncertainty before a commit step]`}
+          − 0.15 · [decision uncertainty before a commit step]
+          + 0.60 · [${DEFAULT_INTERVENTION_BUDGET} interventions already shown this run]`}
         </pre>
         <p className="mt-4 text-sm leading-relaxed text-slate">
           Compared with the highest technique total from section 05. When it wins, no intervention is composed; the decision, its candidates and
@@ -69,7 +74,7 @@ export function DoNothingPolicy() {
           <strong>The false-intervention rate is a first-class quality metric.</strong> Its inputs are recorded on every run: assistance shown,
           assistance dismissed with the not-helpful flag, decisions withheld with their full candidate list, and the run&rsquo;s count of withheld
           interventions. Because the reasons are stored, why nothing appeared can be read back like any other choice (<Cite id="amershi2019" />
-          ). The rate is not yet reported on the Measure page; until it is, the events are the record.
+          ). The rate is not yet reported in the Measure phase of Mission Control; until it is, the events are the record.
         </p>
       </Prose>
     </div>
