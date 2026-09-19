@@ -1,6 +1,6 @@
 import type { IframeDriver } from "../interaction/driver";
 import { generalizeRoute, pageStateLabel } from "../interaction/snapshot";
-import type { ElementRole, ParsedObjective, PlannerKind, SemanticAnchor, Workflow, WorkflowStep } from "../types";
+import type { ElementRole, PageModel, ParsedObjective, PlannerKind, SemanticAnchor, Workflow, WorkflowStep } from "../types";
 import type { DiscoveredState } from "./explorer";
 import { requirementFieldScore } from "../planner/heuristic";
 
@@ -21,7 +21,10 @@ export interface TraceEvent {
   name?: string;
   role?: ElementRole;
   commit?: boolean;
+  /** Route pattern (ids generalized). */
   route: string;
+  /** Concrete URL at the time (used to replay the entry navigation; the runner substitutes the context's entry record). */
+  url?: string;
   stateLabel: string;
   fingerprint: string;
   heading: string;
@@ -72,7 +75,7 @@ export class DemonstrationRecorder {
     if (route !== this.lastRoute) {
       this.lastRoute = route;
       const page = this.driver.snapshot().page;
-      this.push({ t: Date.now(), kind: "navigate", route: generalizeRoute(route), stateLabel: pageStateLabel(page), fingerprint: page.fingerprint, heading: page.heading, stepHeading: page.headings.find((h) => /step \d/i.test(h)) });
+      this.push({ t: Date.now(), kind: "navigate", route: generalizeRoute(route), url: route, stateLabel: pageStateLabel(page), fingerprint: page.fingerprint, heading: page.heading, stepHeading: stepHeadingOf(page) });
     }
   }
 
@@ -115,10 +118,11 @@ export class DemonstrationRecorder {
       role: model.role,
       commit: model.commit,
       route: generalizeRoute(page.url),
+      url: page.url,
       stateLabel: pageStateLabel(page),
       fingerprint: page.fingerprint,
       heading: page.heading,
-      stepHeading: page.headings.find((h) => /step \d/i.test(h)),
+      stepHeading: stepHeadingOf(page),
       region: model.region,
     });
   }
@@ -127,6 +131,17 @@ export class DemonstrationRecorder {
     this.events.push(e);
     this.onEvent?.(e);
   }
+}
+
+/**
+ * The sub-state of a screen within one route: a wizard step indicator ("Step 2 of 3 · Qualification")
+ * from the field container path, else the first secondary heading (h2/h3) that is not the page heading.
+ */
+export function stepHeadingOf(page: PageModel): string | undefined {
+  const fromPath = page.fields[0]?.path.find((p) => /step \d/i.test(p)) ?? page.headings.find((h) => /step \d/i.test(h));
+  if (fromPath) return fromPath;
+  const secondary = page.headings.find((h) => h && h !== page.heading);
+  return secondary && page.fields.length ? secondary : undefined;
 }
 
 export interface ClarificationQuestion {
@@ -153,11 +168,11 @@ const NEXT_RE = /^(next|continue|proceed)\b/i;
  * ambiguous.
  */
 export function reconstructWorkflow(trace: TraceEvent[], opts: { objective?: ParsedObjective; states?: DiscoveredState[]; planned?: Workflow; startUrl: string; planner: PlannerKind; previousVersion?: string }): Reconstruction {
-  const groups: { label: string; route: string; heading: string; stepHeading?: string; events: TraceEvent[] }[] = [];
+  const groups: { label: string; route: string; url?: string; heading: string; stepHeading?: string; events: TraceEvent[] }[] = [];
   for (const e of trace) {
     const last = groups[groups.length - 1];
     const sameState = last && last.route === e.route && (last.stepHeading ?? "") === (e.stepHeading ?? "");
-    if (!sameState) groups.push({ label: e.stateLabel, route: e.route, heading: e.heading, stepHeading: e.stepHeading, events: [] });
+    if (!sameState) groups.push({ label: e.stateLabel, route: e.route, url: e.url, heading: e.heading, stepHeading: e.stepHeading, events: [] });
     if (e.kind !== "navigate") groups[groups.length - 1].events.push(e);
   }
   const acted = groups.filter((g) => g.events.length);
@@ -166,6 +181,26 @@ export function reconstructWorkflow(trace: TraceEvent[], opts: { objective?: Par
   const deviations: string[] = [];
   const requirements = opts.objective?.requirements.filter((r) => r.kind === "field") ?? [];
   const plannedNames = new Set((opts.planned?.steps ?? []).flatMap((s) => s.actions.map((a) => a.targetName ?? "")));
+
+  const entry = acted[0];
+  if (entry?.url) {
+    const isRecord = entry.route.includes(":id");
+    steps.push({
+      id: "d0",
+      index: 0,
+      title: isRecord ? `Open the ${opts.objective?.entryHints[0] ?? "entry"} record` : `Open ${entry.heading || entry.route}`,
+      description: `Demonstrated: started on ${entry.label}.`,
+      route: entry.route,
+      actions: [{ kind: "navigate", url: entry.url, label: isRecord ? `Open the ${opts.objective?.entryHints[0] ?? "entry"} record` : `Open ${entry.heading || entry.route}` }],
+      requirementIds: [],
+      mode: "act",
+      modeRationale: "Navigation carries no judgment.",
+      commit: false,
+      judgment: false,
+      anchor: { routePattern: entry.route, heading: entry.heading },
+      expected: `${entry.heading || "The record"} is open.`,
+    });
+  }
 
   acted.forEach((g, i) => {
     const actions: WorkflowStep["actions"] = [];

@@ -57,7 +57,6 @@ export interface ExploreOptions {
 }
 
 const NEXT_RE = /^(next|continue|proceed)\b/i;
-const BACK_RE = /^(back|previous|cancel)\b/i;
 const DISMISS_RE = /^(i understand|got it|ok|okay|close|dismiss|cancel|acknowledge|continue|done)\b/i;
 
 function isoDate(daysAhead: number): string {

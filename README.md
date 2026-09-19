@@ -95,8 +95,10 @@ extension for cross-origin applications, vision-based grounding, learned (bandit
 ## Tests
 
 ```bash
-npm run dev            # in one terminal
+npm run dev                  # in one terminal
 node verify/engine.spec.js   # discover → plan → act (v1) → act (v2 self-heal) → observe a scripted human
+node verify/friction.spec.js # friction states, minimal interventions, DO_NOTHING when fluent, no typed values in events
+node verify/epics.spec.js    # evidence + contradictions → STOP, Autonomy Contract, ledger undo, Get It Done, demonstration → workflow
 ```
 
 ## Brand

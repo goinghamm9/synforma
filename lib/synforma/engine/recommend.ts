@@ -80,7 +80,7 @@ export function recommend(program: Program, metrics: ProgramMetrics, runs: Run[]
     stepDist.set(st, (stepDist.get(st) ?? 0) + 1);
   }
   const dominant = Array.from(stepDist.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? (worst && worst.errors > worst.hesitations ? "ERROR_RECOVERY" : worst && worst.hesitations > 0 ? "WORKFLOW_KNOWLEDGE_GAP" : undefined);
-  const stepHyps = hypotheses.filter((h) => h.stepId === worst?.stepId);
+  void hypotheses; // reserved: per-step hypothesis history will refine the class once enough runs exist
   const evidence: string[] = [];
   if (worst) {
     evidence.push(`Step "${worst.title}": ${worst.entered} entries, ${worst.completed} completions, ${worst.errors} validation errors, ${worst.hesitations} hesitations, ${worst.backtracks} backtracks`);
