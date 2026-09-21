@@ -184,3 +184,9 @@ Details in `docs/OPERATIONS.md`.
 
 Synforma (sin-FOR-ma) is a working brand name pending trademark and domain clearance. Tagline:
 *Intelligence for becoming.*
+
+## Repository
+
+This repository was split out of `goinghamm9/Experimentation` (folder `synforma/`) on 2026-09-21 with
+its full history. Production is the Netlify project `synforma`, which builds `main` from this repository;
+the operations guide covers hosting, environment variables and verification.
