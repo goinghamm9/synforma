@@ -23,8 +23,8 @@ visitor-access setting may require a Netlify team login: sign in to Netlify firs
 ### Run locally
 
 ```bash
-git clone https://github.com/goinghamm9/Experimentation.git
-cd Experimentation/synforma
+git clone https://github.com/goinghamm9/synforma.git
+cd synforma
 npm install
 npm run dev          # http://localhost:3000, Mission Control at /demo
 ```
@@ -33,11 +33,10 @@ Node 20 or newer. Production build check: `npm run build && npm run start`.
 
 ### Netlify (production; Next.js runtime)
 
-The repository root carries `netlify.toml`: base directory `synforma`, build command `npm run build`,
-publish directory `synforma/.next`, plugin `@netlify/plugin-nextjs`, Node 20. `synforma/netlify.toml`
-holds the same settings relative to the folder, for a project whose base directory is set in the UI.
+The repository root carries `netlify.toml`: build command `npm run build`, publish directory `.next`,
+plugin `@netlify/plugin-nextjs`, Node 20. No base directory: the app is the whole repository.
 
-1. **Add new project → Import from an existing project → GitHub**, pick `goinghamm9/Experimentation`,
+1. **Add new project → Import from an existing project → GitHub**, pick `goinghamm9/synforma`,
    branch `main`. Build settings are read from `netlify.toml`; leave them as detected.
 2. Optional: under **Site configuration → Environment variables** set `ANTHROPIC_API_KEY` (Claude) or
    `GEMINI_API_KEY` (Gemini). Redeploy. `/api/planner/status` then reports the provider and model; the
@@ -51,14 +50,13 @@ mounts the app under a sub-path. The static export has no planner route, so the 
 always runs.
 
 1. In the repository choose **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-2. Run the workflow **Deploy Synforma to GitHub Pages** (`.github/workflows/synforma-pages.yml`,
-   manual dispatch). It builds with base path `/Experimentation` and publishes to
-   `https://goinghamm9.github.io/Experimentation/`.
+2. Run the workflow **Deploy to GitHub Pages** (`.github/workflows/pages.yml`, manual dispatch). It
+   builds with base path `/synforma` and publishes to `https://goinghamm9.github.io/synforma/`.
 
 ### Vercel
 
-Import the repository, set **Root Directory** to `synforma`, keep the defaults (Next.js preset,
-`next build`). Environment variables are optional, as above.
+Import the repository and keep the defaults (Next.js preset, `next build`, root directory unchanged).
+Environment variables are optional, as above.
 
 ### Any other Node host
 
@@ -85,7 +83,7 @@ lists them; copy it to `.env.local` for local development and restart the dev se
 | `GEMINI_MODEL` | Gemini model id; default `gemini-2.5-flash`. |
 | `PLANNER_PROVIDER` | `claude` or `gemini`: pin one vendor when both keys are present. |
 | `SYNFORMA_STATIC` | `1` builds a static export without API routes (set by `npm run build:static`). |
-| `NEXT_PUBLIC_BASE_PATH` | Sub-path for a static deployment (e.g. `/Experimentation`); public by design, contains no secret. |
+| `NEXT_PUBLIC_BASE_PATH` | Sub-path for a static deployment (e.g. `/synforma`); public by design, contains no secret. |
 
 `GET /api/planner/status` returns `{ configured, provider, model }` and nothing else. `POST
 /api/planner` validates the request and the model's reply against fixed Zod schemas, retries once with a

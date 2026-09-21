@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build a fully static export of Synforma (no API routes) into ./out.
-# Usage: NEXT_PUBLIC_BASE_PATH=/Experimentation scripts/build-static.sh
+# Usage: NEXT_PUBLIC_BASE_PATH=/synforma scripts/build-static.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 API_DIR="app/api"

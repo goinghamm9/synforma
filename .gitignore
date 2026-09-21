@@ -42,3 +42,8 @@ next-env.d.ts
 
 # verification artifacts
 .verify/
+
+# python (services/tribe-bridge)
+__pycache__/
+*.pyc
+.venv/

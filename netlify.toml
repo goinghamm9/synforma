@@ -1,5 +1,5 @@
 # Netlify: Synforma on the Next.js runtime (the optional planner route needs a server).
-# Used when the project's base directory is this folder. Paths are relative to this folder.
+# The app is the whole repository: no base directory. Netlify reads this file on import.
 [build]
   command = "npm run build"
   publish = ".next"

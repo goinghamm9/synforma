@@ -8,8 +8,7 @@ composes assistance on its own (**Adapt**), and measures whether the intended ou
 Controls are addressed by role and accessible name, never by selector, so the workflow survives a vendor
 UI update.
 
-Live: **https://synforma.netlify.app** (the production build of `main`; the team's visitor-access
-setting may ask for a Netlify team login).
+Live: **https://synforma.netlify.app** (the production build of `main`).
 
 ## Try it
 

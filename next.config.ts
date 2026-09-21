@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 /**
  * SYNFORMA_STATIC=1 builds a fully static export (no API routes) for static hosts such as
- * GitHub Pages; NEXT_PUBLIC_BASE_PATH mounts the app under a sub-path (e.g. "/Experimentation").
+ * GitHub Pages; NEXT_PUBLIC_BASE_PATH mounts the app under a sub-path (e.g. "/synforma").
  * The default build is the ordinary Node/Vercel build with the optional planner API route.
  */
 const isStatic = process.env.SYNFORMA_STATIC === "1";
