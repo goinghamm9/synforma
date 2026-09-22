@@ -118,7 +118,9 @@ export function parseRequirements(text: string): Requirement[] {
     const within = /within\s+(\d+)\s+days?/i.exec(text);
     const atLeast = /at least\s+(\d+)\s+days?/i.exec(text);
     const fieldHint = text.replace(/\([^)]*\)/g, "").replace(/\b(a|an|the|named|at least one|recorded|scheduled|set|must|be|is|has|have|or|of)\b/gi, " ").replace(/\s+/g, " ").trim();
-    const kind: Requirement["kind"] = /\b(without|never|must not|do not|restricted|confidential|policy)\b/i.test(text) ? "policy" : /\b(adoption|% |percent|sustained)\b/i.test(text) ? "outcome" : "field";
+    // A constraint is phrased as a prohibition. A list item that names something to create ("A policy that allows …")
+    // is a field requirement even when the artifact is called a policy.
+    const kind: Requirement["kind"] = /\b(without|never|must not|do not|don't|restricted|confidential|prohibited|not allowed)\b/i.test(text) ? "policy" : /\b(adoption|% |percent|sustained)\b/i.test(text) ? "outcome" : "field";
     return {
       id: `r${i + 1}`,
       text,

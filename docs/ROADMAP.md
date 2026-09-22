@@ -20,11 +20,12 @@ never automated, conflicting sources stop autonomy, no fabricated statistics, ci
 
 Four target applications (Meridian CRM, Ledgerline Billing, Nimbus Data Console, Atlas ERP), a target
 picker and presenter notes in Mission Control, a demo-applications gallery at `/sandbox`, and
-`verify/targets.spec.js` as the zero-configuration regression across all of them. Three run 5/5 on both
-UI versions. Known gap: the data console's row-level-security switch reaches the engine without an
-accessible name, so the requirement lands on the review acknowledgement instead and the policy fields
-stay unmapped; the fix is in the accessible-name computation (label-for on switches) and in mapping
-multi-word requirements, not in the application.
+`verify/targets.spec.js` as the zero-configuration regression across all of them. All four run 5/5 on
+both UI versions. The data console joined last: its policy requirement was being read as a constraint
+because it contains the word "policy", the renamed "RLS protection" switch did not match "Row level
+security" on the outcome screen, and the vendor update moves the policy fields to a tab on the review
+step. The fixes are generic (requirement kind by prohibition wording, acronym-aware matching, fills
+carried forward to later screens of the same form), not per application.
 
 ## Phase 1 — this release: simplify and host
 

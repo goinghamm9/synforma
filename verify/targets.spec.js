@@ -43,5 +43,9 @@ const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return
   }
   console.log("\nSUMMARY");
   for (const row of summary) console.log(JSON.stringify(row));
+  // Gate: every target completes both runs with every requirement verified.
+  const bad = summary.filter((row) => row.error || !/^completed (\d+)\/\1\b/.test(row.v1) || !/^completed (\d+)\/\1\b/.test(row.v2));
+  console.log(bad.length ? `FAIL: ${bad.map((row) => row.id).join(", ")}` : "PASS: all targets 5/5 on both UI versions");
+  process.exitCode = bad.length ? 1 : 0;
   await browser.close();
 })();

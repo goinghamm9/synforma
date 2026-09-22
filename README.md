@@ -72,15 +72,19 @@ context, a simulated vendor update (labels, menus, tabs and DOM ids change) and 
 | Meridian CRM | qualified opportunity from an inbound lead | 5/5 requirements, self-healed |
 | Ledgerline Billing | compliant refund for a disputed charge | 5/5 requirements, self-healed |
 | Atlas ERP | approvable purchase requisition | 5/5 requirements, self-healed |
-| Nimbus Data Console | new table with row level security on | partial: the security toggle is not yet read as a labelled control (see `docs/ROADMAP.md`) |
+| Nimbus Data Console | new table with row level security on and a read-own-rows policy | 5/5 requirements, self-healed |
 
 The engine changes that made this possible are generic, not per app: discovery keeps prefilled values,
 retries rejected fields with values derived from the validation message, reads fields behind toggles,
 closes menus it opened and replays a wizard's path instead of reloading it; the planner picks the
 terminal commit control, sets selects the objective names outright and ticks acknowledgement boxes on
 the commit screen; the runner finds fields a vendor update moved into a tab, skips a "Next" the new
-version no longer needs, never re-grounds forward navigation onto "Back", repairs duplicate names and
-re-synchronises with a wizard that jumped back. `node verify/targets.spec.js` runs all four.
+version no longer needs, never re-grounds forward navigation onto "Back", repairs duplicate names,
+re-synchronises with a wizard that jumped back and carries a fill forward when the vendor moved its
+field to a later screen of the same form; matching treats an abbreviation as the phrase whose initials
+it spells ("RLS protection" is "Row level security"); and a requirement that names an artifact to create
+("a policy that allows …") is a field requirement, not a constraint. `node verify/targets.spec.js` runs
+all four.
 
 ## Demo in five minutes
 

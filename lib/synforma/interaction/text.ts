@@ -108,17 +108,44 @@ export function overlap(a: string[], b: string[]): number {
   return inter / Math.min(sa.size, sb.size);
 }
 
+/** Uppercase abbreviations of three to five letters as written ("RLS", "SKU"), lowercased. Two-letter ones ("ID") are too ambiguous. */
+export function acronymsIn(s: string): string[] {
+  return Array.from(new Set(Array.from(s.matchAll(/\b([A-Z]{3,5})\b/g), (m) => m[1].toLowerCase())));
+}
+
+/** Replace a run of tokens whose initials spell one of the acronyms with that acronym ("row level security" → "rls"). */
+export function collapseAcronyms(tokens: string[], acronyms: string[]): string[] {
+  let out = tokens;
+  for (const acronym of acronyms) {
+    if (out.includes(acronym)) continue;
+    const n = acronym.length;
+    for (let i = 0; i + n <= out.length; i++) {
+      if (out.slice(i, i + n).map((t) => t[0]).join("") === acronym) {
+        out = [...out.slice(0, i), acronym, ...out.slice(i + n)];
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Similarity between two phrases in [0, 1].
  * Combines exact match, substring containment, token overlap and Jaccard.
+ * An uppercase abbreviation on one side matches the phrase whose initials it spells on the other
+ * ("RLS protection" ≈ "Row level security"), so a renamed control keeps its meaning.
  */
 export function similarity(a: string, b: string): number {
   const na = normalizeText(a);
   const nb = normalizeText(b);
   if (!na || !nb) return 0;
   if (na === nb) return 1;
-  const ta = tokenize(na);
-  const tb = tokenize(nb);
+  let ta = tokenize(na);
+  let tb = tokenize(nb);
+  const acrA = acronymsIn(a);
+  const acrB = acronymsIn(b);
+  if (acrB.length) ta = collapseAcronyms(ta, acrB);
+  if (acrA.length) tb = collapseAcronyms(tb, acrA);
   if (!ta.length || !tb.length) return na.includes(nb) || nb.includes(na) ? 0.6 : 0;
   const ov = overlap(ta, tb);
   const jc = jaccard(ta, tb);
