@@ -14,7 +14,7 @@ const OPTIONS: { value: Preference; label: string; hint: string }[] = [
   {
     value: "auto",
     label: "Automatic",
-    hint: `Ask the decision model when the lexical rules are unsure which field is which, if the server has credentials. Every question and answer is recorded with its probability; an answer below ${ACCEPT_PROBABILITY} is never acted on.`,
+    hint: `Ask the decision model where the lexical rules are unsure (a field or control after a vendor update, a menu item during discovery, a requirement with no matching field, judgment), if the server has credentials. Every question and answer is recorded with its probability; a choice below ${ACCEPT_PROBABILITY} is never acted on, and the judgment flag is only ever added.`,
   },
   { value: "off", label: "Off", hint: "Lexical rules only. Runs behave exactly as they do without any credentials." },
 ];
@@ -67,7 +67,7 @@ export function DecisionsSection() {
       id="decisions"
       eyebrow="Decisions"
       title="System One decisions"
-      lede="When the lexical rules cannot tell which control is which after a vendor update, the runner can put the screen's fields to a decision model (TypeSafe's Jev) as a typed multiple-choice question. The model returns one option with a calibrated probability; it never writes text, never plans and never acts on its own."
+      lede="Where the lexical rules are unsure, the engine can put a typed question to a decision model (TypeSafe's Jev) and get one option back with a calibrated probability: which field or control on a screen is the one the plan knew, which items of a menu would commit data before discovery tries any, where a requirement goes when no field matches its words, and whether a requirement needs a person's judgment. The model never writes text, never plans and never acts on its own; below the acceptance threshold its answer is recorded and ignored."
     >
       <FieldRow label="Server status" hint="Read from /api/decide/status. The credentials stay on the server.">
         {fetch_.state === "loading" ? (

@@ -1,5 +1,5 @@
 import type { IframeDriver } from "../interaction/driver";
-import { ground, roleCompatible, type GroundingCandidate } from "../interaction/grounding";
+import { ground, groundedByEvidence, roleCompatible, type GroundingCandidate } from "../interaction/grounding";
 import { ACCEPT_PROBABILITY, type Decider } from "../decisions/types";
 import { generalizeRoute } from "../interaction/snapshot";
 import { similarity } from "../interaction/text";
@@ -167,6 +167,45 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
     return field;
   };
 
+  /**
+   * The same for a control (a button, a menu item, a tab, a link) the driver could not ground: the screen's enabled
+   * controls of a compatible kind, on the plan's side of the commit line, are put to the model. A confident choice is
+   * performed and reported as a re-grounding decided by the model; anything else leaves the failure to the rules.
+   */
+  const decideControl = async (page: PageModel, action: Action, step: WorkflowStep, trigger: "unfound" | "guess" = "unfound"): Promise<SemanticElement | null> => {
+    const decider = opts.decider;
+    if (!decider || !action.targetName) return null;
+    const wantCommit = Boolean(action.targetCommit);
+    const candidates = page.actions.filter((a) => !a.disabled && roleCompatible(action.targetRole, a.role) && (wantCommit ? Boolean(a.commit) : !a.commit));
+    if (!candidates.length) return null;
+    const expected = action.targetName;
+    decisions.asked += 1;
+    const choice = await decider.chooseControl({ expected: { name: expected, role: action.targetRole, label: action.label, commit: wantCommit, region: action.targetRegion, purpose: step.title }, screen: { heading: page.heading, url: page.url }, candidates });
+    const by = decider.name;
+    if (!choice) {
+      hooks.onEvent("decision", { by, question: "control", trigger, expected, unavailable: true, reason: decider.lastError, screen: step.route ?? null }, step.id, `${by} gave no answer about "${expected}"${decider.lastError ? ` (${decider.lastError})` : ""}; lexical rules only`);
+      return null;
+    }
+    const p = Math.round(choice.probability * 100) / 100;
+    const base = { by, question: "control", trigger, expected, choice: choice.name, key: choice.key, probability: choice.probability, confidence: choice.confidence, latencyMs: choice.latencyMs, screen: step.route ?? null };
+    const control = choice.key ? (page.actions.find((a) => a.key === choice.key) ?? null) : null;
+    if (!control || choice.probability < ACCEPT_PROBABILITY) {
+      const stands = trigger === "guess" ? "; the rules' own guess stands" : "";
+      hooks.onEvent("decision", { ...base, accepted: false }, step.id, control ? `${by}: "${expected}" might be "${control.name}" (p ${p}), below the ${ACCEPT_PROBABILITY} acceptance threshold; not used${stands}` : `${by}: no control on this screen is "${expected}" (p ${p})${stands}`);
+      return null;
+    }
+    decisions.accepted += 1;
+    regroundings += 1;
+    hooks.onEvent("decision", { ...base, accepted: true }, step.id, `${by}: "${expected}" is now "${control.name}" (p ${p})${trigger === "guess" ? " (the rules would have guessed by role alone)" : ""}`);
+    hooks.onEvent(
+      "action_regrounded",
+      { from: expected, to: control.key, toName: control.name, decidedBy: by, probability: choice.probability, change: { type: "ui_element_changed", screen: step.route ?? null, affectedStep: step.id, detectedAt: Date.now(), risk: step.commit ? "medium" : "low", decidedBy: by, probability: choice.probability } },
+      step.id,
+      `Re-grounded "${expected}" → "${control.name}" (decided by ${by}, p ${p})`,
+    );
+    return control;
+  };
+
   // Fills whose field was not on the planned screen: a vendor update may have moved it to a later screen of the same
   // form (a tab on the review step). They are retried at the start of each later step on that route.
   const carried: { action: Action; route?: string }[] = [];
@@ -304,6 +343,18 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
           }
         }
       }
+      if (opts.decider && (action.kind === "click" || action.kind === "expand") && action.targetName) {
+        // The rules would re-ground this control by its role alone (no word of the old name, no hint, no acronym): a
+        // guess. The decision model is asked first; its confident choice replaces the guess, anything else leaves it.
+        const located = driver.locate?.(action);
+        if (located?.regrounded && !groundedByEvidence(located.reasons)) {
+          const control = await decideControl(driver.snapshot().page, action, step, "guess");
+          if (control) {
+            action = { ...action, target: control.key, targetName: control.name, targetRole: control.role };
+            decided = true;
+          }
+        }
+      }
       const beforeVal = fieldValue(page, action.target);
       let r = await perform(action, step);
       if (hooks.onLedger && opts.ledger) {
@@ -338,6 +389,15 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
         await driver.waitForSettle(600);
         driver.snapshot();
         r = await perform(action, step);
+      }
+      if (!r.ok && (action.kind === "click" || action.kind === "expand") && /could not find an element/i.test(r.error ?? "")) {
+        // The rules could not ground the control: the decision model's turn, among the screen's controls of the same kind.
+        const control = await decideControl(driver.snapshot().page, action, step);
+        if (control) {
+          action = { ...action, target: control.key, targetName: control.name, targetRole: control.role };
+          decided = true;
+          r = await perform(action, step);
+        }
       }
       if (!r.ok && action.targetRole === "menuitem" && driver.snapshot().page.actions.some((a) => a.role === "menuitem")) {
         // Leave no menu open behind a failure: it would hide the rest of the screen from the next action.

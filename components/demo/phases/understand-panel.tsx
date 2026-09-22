@@ -225,6 +225,18 @@ export function UnderstandPanel({ program, graph, plannerLabel, plannerName, cla
                           needs human judgment
                         </Badge>
                       ) : null}
+                      {r.decided?.fieldName ? (
+                        <span className="text-slate" data-testid="requirement-decided">
+                          placed on &ldquo;{r.decided.fieldName}&rdquo; by {r.decided.by}
+                          {typeof r.decided.probability === "number" ? ` (p ${r.decided.probability.toFixed(2)})` : ""}
+                        </span>
+                      ) : null}
+                      {typeof r.decided?.judgmentProbability === "number" ? (
+                        <span className="text-slate" title={`${r.decided.by}'s probability that this requirement needs a person's judgment${r.decided.judgmentApplied ? "; the flag was added on that basis" : ""}`}>
+                          judgment p {r.decided.judgmentProbability.toFixed(2)}
+                          {r.decided.judgmentApplied ? " (flagged)" : ""}
+                        </span>
+                      ) : null}
                       {exp ? <span className="text-slate">{exp}</span> : null}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]" data-testid="requirement-provenance">

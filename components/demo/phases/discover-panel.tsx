@@ -24,7 +24,7 @@ export interface DiscoveryState {
   stats: ExploreStats | null;
   error: string | null;
   startedAt: number | null;
-  planned: { mapped: number; total: number; steps: number } | null;
+  planned: { mapped: number; total: number; steps: number; /** Requirements the decision model placed / flagged for judgment. */ decided?: number; flagged?: number } | null;
 }
 
 interface Props {
@@ -158,6 +158,12 @@ export function DiscoverPanel({ state, program, liveGraph, plannerLabel, planner
             {state.stats ? (
               <span className="text-graphite">
                 {state.stats.statesVisited} states in {formatDuration(state.stats.durationMs)} · stopped by {state.stats.stoppedBy.replace("-", " ")}
+                {state.stats.decisions?.asked ? (
+                  <span data-testid="discovery-decisions">
+                    {" "}
+                    · Jev assessed {state.stats.decisions.asked} menu item{state.stats.decisions.asked === 1 ? "" : "s"}, {state.stats.decisions.commits} marked as commits
+                  </span>
+                ) : null}
               </span>
             ) : disc?.endedAt ? (
               <span className="text-graphite">
@@ -169,6 +175,12 @@ export function DiscoverPanel({ state, program, liveGraph, plannerLabel, planner
             <div className="text-sm text-graphite">
               {plannerLabel}: mapped <span className="mono-data text-ink">{state.planned.mapped}</span> of <span className="mono-data text-ink">{state.planned.total}</span> field requirements into a workflow of{" "}
               <span className="mono-data text-ink">{state.planned.steps}</span> steps.
+              {state.planned.decided || state.planned.flagged ? (
+                <span data-testid="planned-decisions">
+                  {" "}
+                  Jev placed <span className="mono-data text-ink">{state.planned.decided ?? 0}</span> and flagged <span className="mono-data text-ink">{state.planned.flagged ?? 0}</span> for judgment, each with its probability.
+                </span>
+              ) : null}
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">

@@ -47,6 +47,14 @@ export function roleCompatible(expected: ElementRole | undefined, actual: Elemen
   return actual === expected || Boolean(ROLE_FAMILIES[expected]?.includes(actual));
 }
 
+/** A link with a destination, offered for a control the plan knew as a button or a menu item. */
+function navigatesAway(q: GroundingQuery, el: SemanticElement): boolean {
+  if (el.role !== "link" || !el.href) return false;
+  const href = el.href.split("#")[0];
+  if (!href || href === "#") return false;
+  return q.role === "button" || q.role === "menuitem";
+}
+
 export function scoreCandidate(q: GroundingQuery, el: SemanticElement): GroundingCandidate {
   const reasons: string[] = [];
   let score = 0;
@@ -57,6 +65,11 @@ export function scoreCandidate(q: GroundingQuery, el: SemanticElement): Groundin
     if (el.role === q.role) {
       score += 0.25;
       reasons.push(`role ${el.role}`);
+    } else if (navigatesAway(q, el)) {
+      // A planned button or menu item acts on the current screen; a link that leads elsewhere (the global
+      // navigation) is never the same control, however many words they share ("Lead tools" is not "Leads").
+      score -= 0.3;
+      reasons.push("navigation link");
     } else if (ROLE_FAMILIES[q.role]?.includes(el.role)) {
       score += 0.12;
       reasons.push(`compatible role ${el.role}`);
@@ -140,6 +153,14 @@ function acronymMatch(a: string, b: string): boolean {
   const ta = tokenize(a);
   const tb = tokenize(b);
   return Boolean((ia && tb.includes(ia)) || (ib && ta.includes(ib)));
+}
+
+/** Reasons that tie a candidate to the control the plan knew, as opposed to its role and side of the commit line alone. */
+const EVIDENCE_RE = /^(exact semantic key|same name|name similar|description\/options overlap|hint overlap|only menu item sharing a word|acronym of the old name|only commit control)/;
+
+/** True when a grounding rests on some evidence of identity (a word, a hint, an acronym, the one commit control), not on the role alone. */
+export function groundedByEvidence(reasons: string[]): boolean {
+  return reasons.some((r) => EVIDENCE_RE.test(r));
 }
 
 export function ground(q: GroundingQuery, page: PageModel, threshold = 0.42): GroundingCandidate | null {

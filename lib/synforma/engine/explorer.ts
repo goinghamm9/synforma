@@ -1,8 +1,9 @@
 import type { Action, ActionResult, PageModel, SemanticElement, WorkGraph } from "../types";
 import type { IframeDriver } from "../interaction/driver";
+import { COMMIT_PROBABILITY, type Decider } from "../decisions/types";
 import { generalizeRoute, pageStateLabel } from "../interaction/snapshot";
 import { slug } from "../interaction/text";
-import { nodeId, upsertEdge, upsertNode } from "../graph/work-graph";
+import { annotateNode, nodeId, upsertEdge, upsertNode } from "../graph/work-graph";
 
 /**
  * Autonomous discovery.
@@ -44,6 +45,8 @@ export interface ExploreStats {
   statesVisited: number;
   durationMs: number;
   stoppedBy: "exhausted" | "state-limit" | "time-limit" | "aborted";
+  /** Menu items put to the decision model (would activating this commit data?), and how many it marked as commits. */
+  decisions: { asked: number; commits: number };
 }
 
 export interface ExploreOptions {
@@ -54,7 +57,12 @@ export interface ExploreOptions {
   limits?: { maxStates?: number; maxDepth?: number; timeBudgetMs?: number; maxInstancesPerRoute?: number };
   onEvent?: (e: ExploreEvent) => void;
   signal?: AbortSignal;
+  /** A decision model that confirms which menu items would commit data before any is tried; omitted → the vocabulary alone. */
+  decider?: Decider;
 }
+
+/** Menu items whose wording already says they only look, open or edit locally are not worth a question. */
+const OBVIOUSLY_SAFE_RE = /^(view|open|show|edit|details|copy|export|print|refresh|reload|expand|collapse|preview|download)\b/i;
 
 const NEXT_RE = /^(next|continue|proceed)\b/i;
 const DISMISS_RE = /^(i understand|got it|ok|okay|close|dismiss|cancel|acknowledge|continue|done)\b/i;
@@ -130,6 +138,7 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
   const seenMenus = new Set<string>();
   const queue: { url: string; depth: number; parentId?: string; via?: Action; path: Action[] }[] = [];
   let stoppedBy: ExploreStats["stoppedBy"] = "exhausted";
+  const decisions = { asked: 0, commits: 0 };
   const basePath = startUrl.split("?")[0].replace(/\/$/, "");
   const objects = new Set<string>();
 
@@ -439,6 +448,35 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
         upsertNode(graph, { id: itemId, type: "action", label: item.name, description: `menu item in ${mb.name}${item.commit ? " · commit" : ""}`, status: "observed", confidence: 0.85, data: { key: item.key, role: "menuitem", menu: mb.name, menuKey: mb.key, commit: Boolean(item.commit), screen: state.screenNodeId } });
         upsertEdge(graph, menuActionId, itemId, "reveals");
       }
+      // Before any item is tried: the decision model says which ones would commit data. The vocabulary's own commits
+      // are never downgraded; an item the model marks as a commit (p ≥ COMMIT_PROBABILITY) is never tried; every
+      // assessed item's node carries the calibrated probability instead of the placeholder confidence.
+      if (opts.decider) {
+        const unsure = items.filter((i) => !i.commit && !i.disabled && !OBVIOUSLY_SAFE_RE.test(i.name));
+        if (unsure.length) {
+          const assessed = await opts.decider.assessCommits({ screen: { heading: page.heading, url: page.url }, context: `The items of the menu "${mb.name}"`, controls: unsure });
+          if (assessed) {
+            decisions.asked += assessed.length;
+            const marked: string[] = [];
+            for (const a of assessed) {
+              const item = items.find((i) => i.key === a.key);
+              if (!item) continue;
+              const isCommit = a.commit >= COMMIT_PROBABILITY;
+              if (isCommit) {
+                item.commit = true;
+                decisions.commits += 1;
+                marked.push(`"${item.name}" (p ${a.commit.toFixed(2)})`);
+              }
+              annotateNode(graph, nodeId("action", state.route, mb.key, item.key), {
+                confidence: isCommit ? a.commit : 1 - a.commit,
+                description: `menu item in ${mb.name}${isCommit ? ` · commit (decided by ${opts.decider.name}, p ${a.commit.toFixed(2)})` : ` · p ${a.commit.toFixed(2)} that it commits (${opts.decider.name})`}`,
+                data: { commit: isCommit, commitProbability: a.commit, decidedBy: opts.decider.name },
+              });
+            }
+            log(`${opts.decider.name} assessed ${assessed.length} item${assessed.length === 1 ? "" : "s"} of "${mb.name}": ${assessed.map((a) => `"${a.name}" ${a.commit.toFixed(2)}`).join(", ")}${marked.length ? ` · not tried: ${marked.join(", ")}` : ""}`);
+          } else log(`${opts.decider.name} could not assess the items of "${mb.name}" (${opts.decider.lastError ?? "no answer"}); the vocabulary's classification stands`, "warn");
+        }
+      }
       emit({ type: "graph", graph });
       const menuSignature = `${mb.name}::${items.map((i) => i.name).join("|")}`;
       if (seenMenus.has(menuSignature)) {
@@ -588,6 +626,7 @@ export async function explore(opts: ExploreOptions): Promise<{ states: Discovere
     statesVisited: states.size,
     durationMs: performance.now() - started,
     stoppedBy,
+    decisions,
   };
   emit({ type: "done", stats });
   return { states: Array.from(states.values()), stats };

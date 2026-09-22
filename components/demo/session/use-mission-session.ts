@@ -149,8 +149,8 @@ export function useMissionSession(): MissionSession {
     if (pid) writePrefs(pid, { phase: id });
   }, []);
 
-  const discovery = useDiscovery({ connection, programId, plannerStatus, setPhase, setContext, target });
   const decision = useDecider();
+  const discovery = useDiscovery({ connection, programId, plannerStatus, setPhase, setContext, target, decider: decision.decider });
   const act = useActRun({ connection, programId, context, applyRegroundings, setUiVariant, target, decider: decision.decider });
   const synth = useSyntheticRuns({ connection, programId, context });
   const recording = useRecording({ programId, currentRunId: act.state.runId });

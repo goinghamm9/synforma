@@ -114,7 +114,10 @@ takes `{ state, questions }` (one to eight typed questions: `choice` with two to
 `{ model, input }`) and then the classic form (`/ai/run/{model}`), and remembers the one that answers.
 The browser decider drops a call that has not answered within 4 s, stops asking after three consecutive
 failures, and never acts on a choice below probability 0.8; every question and answer is a `decision`
-event in the run's trail.
+event in the run's trail. Four questions exist: which field or control on the screen is the one the plan
+knew (runs), which items of a menu would commit data (discovery, marked at 0.95 and above), where a
+requirement goes when no field matches its words (planning, 0.8) and whether it needs a person's judgment
+(planning, flag added at 0.9, never removed).
 
 ## Verification
 
@@ -145,7 +148,10 @@ requirement kinds. `decider.spec.ts` covers the decision model without credentia
 across the shapes the two hosts return, the Cloudflare transport's two request forms and its auth and
 billing errors (never the token), the registry and the probe, the browser decider's deadline and
 failure cut-off, the question it builds, and the runner acting on a confident choice while recording a
-"none", a weak choice and an unreachable model.
+"none", a weak choice and an unreachable model; the control question and its commit affinity, the runner
+performing a decided control and asking before a click the rules would ground by role alone; batched
+commit and judgment questions; and the planning decisions (mapping only where the rules are weak,
+judgment only ever added).
 
 Verifies that every planner task schema survives the structure-only conversion used for Claude's
 structured outputs, that a bad Anthropic key maps to a `ProviderError` of kind `"auth"` without leaking

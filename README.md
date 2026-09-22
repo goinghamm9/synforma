@@ -65,13 +65,28 @@ chooses Automatic, Heuristic only or Language model.
 ### Optional: System One decisions (Jev)
 
 The engine makes small "which one?" decisions with lexical rules: which control is the renamed one
-after a vendor update, which field a requirement refers to. When those rules are unsure which field
-is which, the runner can put the screen's fields to **Jev**, TypeSafe's System One decision model, as
-a typed multiple-choice question ("which of these is the field the plan knew as *Data retention*, or
-none of these?"). Jev returns one option with a calibrated probability; it never writes text, never
-plans and never acts on its own. A choice at probability 0.8 or above is a re-grounding labelled
-"decided by Jev (p 0.93)" in the log, the change list and the audit; "none" or a weaker choice leaves
-the rules' verdict in place. Jev is reached through Cloudflare Workers AI or TypeSafe's API:
+after a vendor update, which field a requirement refers to, which menu items are safe to try. Where
+those rules are unsure, the engine can put a typed question to **Jev**, TypeSafe's System One decision
+model, and get one option back with a calibrated probability; Jev never writes text, never plans and
+never acts on its own. Four questions exist:
+
+- **Fields and controls during a run.** "Which of these is the field (or the button, menu item, tab,
+  link) the plan knew as *Data retention*, or none of these?" A choice at probability 0.8 or above is a
+  re-grounding labelled "decided by Jev (p 0.93)" in the log, the change list, the ledger and the
+  audit; "none" or a weaker choice leaves the rules' verdict in place. Commit controls are offered only
+  for a commit intent, never otherwise. A control the rules would re-ground by its role alone (no word
+  of the old name, no hint, no acronym) is put to Jev before the click; the rules' guess is performed
+  only when Jev answers "none".
+- **Menu items during discovery.** Before discovery tries a menu's items, "would activating this
+  immediately commit data?" for each item the vocabulary does not already classify. The probability
+  becomes the item's confidence in the Work Graph; an item at 0.95 or above is treated as a commit and
+  never tried. The vocabulary's own commits are never downgraded.
+- **Requirements during planning.** A requirement no discovered field matches by its words is put to
+  Jev with the most similar fields; a choice at 0.8 or above places it, and the probability becomes
+  the weight of the fulfils edge. Every requirement is also asked "does this need a person's judgment?";
+  at 0.9 or above the judgment flag is added, never removed.
+
+Jev is reached through Cloudflare Workers AI or TypeSafe's API:
 
 ```bash
 # Jev on Cloudflare Workers AI (model typesafe/jev)
@@ -84,8 +99,8 @@ TYPESAFE_API_KEY=
 Credentials are read only on the server (`app/api/decide`). The browser sees `{ configured, provider,
 model, via }` from `/api/decide/status` and nothing else; `/api/decide/status?probe=1` asks the model
 one fixed question so the credentials and the route can be checked before a demo (Settings → Decisions
-has a button for it). Questions carry field names, roles, options, help text and the requirement's
-wording, never a person's typed text. A call that has not answered within 4 s is dropped and the rules
+has a button for it). Questions carry control and field names, roles, options, help text, screen headings,
+routes and the objective's wording, never a person's typed text. A call that has not answered within 4 s is dropped and the rules
 decide alone; after three consecutive failures the run stops asking. Without credentials, or with
 Settings → Decisions set to Off, runs behave exactly as before.
 
