@@ -6,6 +6,10 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # Next.js keeps the values of build-scoped environment variables in its Turbopack cache, which the Next.js
+  # runtime copies to .netlify/.next/cache; Netlify's secrets scanner would otherwise fail the build on them.
+  # Neither directory is served. The variables themselves belong on the Functions and Runtime scopes only.
+  SECRETS_SCAN_OMIT_PATHS = ".next/cache/**,.netlify/.next/cache/**"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
