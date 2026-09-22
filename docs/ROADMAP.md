@@ -16,8 +16,9 @@ never automated, conflicting sources stop autonomy, no fabricated statistics, ci
 - The language-model planner is optional (Claude, OpenAI, Gemini or Grok, server-side, schema-validated).
   The heuristic planner is the default and deliberately simple.
 - The decision model is optional too (Jev by TypeSafe, server-side, through Cloudflare Workers AI or
-  TypeSafe's API): consulted only when the lexical field lookup is unsure, acted on only at probability
-  ≥ 0.8, and recorded with its probability.
+  TypeSafe's API): consulted only where the lexical rules are unsure (a field or control during a run, a
+  menu item during discovery, a requirement with no matching field, judgment), acted on only above a
+  stated probability, and recorded with its probability everywhere.
 
 ## Demo library — this release
 
@@ -96,7 +97,7 @@ Not built yet. The same autonomy contract classes, ledger and rollback apply to 
 | Demo | Recommended shape | Why |
 |---|---|---|
 | Claude | Two parts, both in the current product: the planner provider (objective parsing, field mapping, diagnosis and assistance wording through the server route, labelled in the UI, bounded by deadlines), and Lumen Workspace, a fictional AI-assistant workspace replica that Synforma teaches and drives like any other application | Shows the model improving understanding without owning structure, actions or citations, and shows adoption of an AI-assistant system itself, not just an LLM behind Synforma |
-| Jev (TypeSafe) | The decision provider in the current product: the runner's field re-grounding question, labelled with its probability in the log, the change list and the audit; next, requirement-to-field mapping during planning and option choice for capped or named values | Shows a System One model doing what it is for, a fast typed decision inside software with the probability in the open, while structure, actions and verification stay deterministic |
+| Jev (TypeSafe) | The decision provider in the current product: fields and controls the runner cannot place, menu items discovery must not try, requirements planning cannot map by their words, and the judgment flag, each labelled with its probability in the log, the Work Graph, the Understand panel and the audit; next, option choice for capped or named values and per-application calibration from outcomes | Shows a System One model doing what it is for, a fast typed decision inside software with the probability in the open, while structure, actions and verification stay deterministic |
 | Stripe | Extension driver on the Stripe dashboard in test mode (Phase 3), then the Stripe API as an Act connector (Phase 4) | A real third-party UI with dialogs, menus and forms; test mode makes commits safe; the API path shows the same contract applied to calls |
 | Supabase | Extension driver on Supabase Studio (Phase 3), then the management API (Phase 4); the same Supabase project can host the Phase 2 backend | One vendor serves as target application and as backend, which keeps the demo honest about what is real |
 | SAP | Fiori-style sandbox replica for the UI story, labelled as such; SAP OData against the Business Accelerator Hub sandbox for the API story (Phase 4) | A real SAP tenant cannot be shown; the replica is declared a replica, and the OData sandbox is a genuine API surface |

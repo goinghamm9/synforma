@@ -58,7 +58,12 @@ next ≈ continue, save ≈ submit, convert ≈ create ≈ new.
 decision model is configured (`lib/synforma/decisions`: Jev by TypeSafe, through Cloudflare Workers AI or
 TypeSafe's API), the screen's enabled fields of a compatible role are put to the model as labelled options
 plus `none_of_these`, with a state that names the field the plan knew, its role, the literal value about
-to be entered and the requirement behind it. The model answers one label with a probability distribution
+to be entered and the requirement behind it. A control the driver cannot ground (a button, a menu item, a
+tab, a link) is treated the same way among the screen's controls of a compatible kind, on the plan's side
+of the commit line: commit controls are offered only for a commit intent, never otherwise. The same question
+is asked before a click whose control the rules would re-ground by its role alone (`groundedByEvidence`:
+no word of the old name, no hint, no acronym, not the one commit control on the screen); such a guess is
+performed only when the model answers "none" or cannot be reached, and the decision says so. The model answers one label with a probability distribution
 and a confidence. A label at probability ≥ 0.8 (`ACCEPT_PROBABILITY`) is a re-grounding decided by the
 model (`action_regrounded` with `decidedBy` and `probability`); `none_of_these` or a weaker label leaves
 the rules' verdict ("not here") in place. The threshold is conservative on purpose: a wrong placement costs
@@ -85,6 +90,15 @@ record route pattern, time budget 120 s. Within each state:
 7. **Commit controls are recorded, never executed.**
 
 Output: `DiscoveredState[]` (page model + replayable path + revealed groups) and the Work Graph.
+
+**Menu items and the decision model.** Discovery never executes a control the vocabulary classifies as a
+commit. Before a menu's items are tried, the ones the vocabulary does not classify (and whose wording does
+not say they only look, open or edit locally) are put to the decision model, when one is configured, as
+one yes / no question each: would activating it immediately commit data? The probability becomes the
+item's confidence in the Work Graph (`commitProbability`, `decidedBy` on the action node) instead of the
+placeholder 0.85; an item at or above `COMMIT_PROBABILITY` (0.95) is treated as a commit and never tried.
+The vocabulary's own commits are never downgraded, and a model that cannot be reached changes nothing.
+`ExploreStats.decisions` counts the items assessed and the ones marked.
 
 ## 4. From objective to program (`HeuristicPlanner.parseObjective`)
 
@@ -136,6 +150,17 @@ workflow is still built by the heuristic planner.
 Values at run time (`resolveValue`): context first; then accepted values that exist as options; for
 people-requirements, an option with a decision-making title (VP, Director, Chief, Head…); dates within
 the requirement's window; sensible defaults otherwise.
+
+**Planning decisions (`lib/synforma/decisions/planning.ts`).** Before the workflow is inferred, and only
+when a decision model is configured, `decidePlan` asks two questions where the rules are weak. A field
+requirement whose best `requirementFieldScore` across the discovered fields is below `CONFIDENT_MAPPING`
+(0.5) is put to the model as a choice among the twelve most similar fields plus `none_of_these`; a choice
+at or above 0.8 sets the requirement's `fieldHint` to that field's name (the planner then maps it as it
+would a confident lexical match), the probability is kept on `requirement.decided` and becomes the weight
+of the fulfils edge. Every field requirement is also put to the model as a yes / no question, does
+satisfying it need a person's judgment; at or above `JUDGMENT_PROBABILITY` (0.9) the `judgment` flag is
+added, never removed, and the probability is kept whatever the answer. A requirement the rules map
+confidently is never put to the model.
 
 ## 6. Execution (`runner.ts`)
 
@@ -496,11 +521,17 @@ deciderLabel(status);                                                // "Jev · 
 
 `RemoteDecider` POSTs `{ state, questions }` to `/api/decide` with a 4 s deadline
 (`REMOTE_DECISION_DEADLINE_MS`), validates the reply with `decisions/protocol.ts`, counts `asked` and
-`answered`, and stops calling after `MAX_FAILURES` (3) consecutive failures until `reset()`.
-`buildFieldQuestion(input, candidates)` is the question the runner asks (labels `f1…fN` plus
-`none_of_these`); `eligibleCandidates` keeps enabled fields whose role is compatible with the expected
-control's (`roleCompatible`). The `Decider` interface (`decisions/types.ts`) is what the runner takes, so
-a test can pass a fake. `verify/decider.spec.ts` covers all of it without credentials.
+`answered`, and stops calling after `MAX_FAILURES` (3) consecutive failures until `reset()`. Its five
+methods are the `Decider` interface (`decisions/types.ts`), which the runner, the explorer and
+`decidePlan` take, so a test can pass a fake: `chooseField` and `chooseControl` (a choice among the
+screen's elements, `buildFieldQuestion` / `buildControlQuestion`, labels `f1…fN` / `c1…cN` plus
+`none_of_these`; `eligibleCandidates` / `eligibleControls` keep enabled elements of a compatible role,
+controls on the plan's side of the commit line), `assessCommits` (one yes / no question per control,
+eight per call, `buildCommitQuestions`), `chooseMapping` (a requirement among the most similar discovered
+fields, `buildMappingQuestion`) and `assessJudgment` (one yes / no question per requirement,
+`buildJudgmentQuestions`). `decisions/planning.ts` exports `decidePlan(decider, parsed, states, { objective,
+appName })` → `{ parsed, decisions: PlanDecisions }` and `summarizePlanDecisions`. `verify/decider.spec.ts`
+covers all of it without credentials.
 
 ### Server side — `@/lib/synforma/decisions/server` and `app/api/decide` (never import from client code)
 
@@ -545,7 +576,8 @@ Semantics of `policy` are in §6. How the UI uses it:
 
 `context` is `Record<string, string>`; `DEFAULT_CONTEXT`, `DEFAULT_OBJECTIVE`, `SANDBOX_APP`,
 `CONTEXT_FIELDS`, `withBase` are in `@/lib/synforma/demo`. `verifyRequirements(page, requirements)`
-checks an outcome screen; `requirementIdOfAction(action)` reads the `{{req:…}}` template.
+checks an outcome screen; `requirementIdOfAction(action)` reads the `{{req:…}}` template. `explore()`
+takes the same `decider?` for the menu-item assessment (§3) and reports `stats.decisions`.
 
 ## Human observer (Guide) — `@/lib/synforma/engine/observer`
 

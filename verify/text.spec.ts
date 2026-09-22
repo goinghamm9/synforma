@@ -64,5 +64,16 @@ check("the option the objective names is the value chosen", resolveValue(action,
 const noNamed = parseRequirements("1. Data retention of at most 60 days");
 check("without a named option, the longest option within the cap is chosen", resolveValue({ ...action, value: "{{req:r1}}" }, noNamed, {}, retention) === "30 days", resolveValue({ ...action, value: "{{req:r1}}" }, noNamed, {}, retention));
 
+
+// A planned button or menu item is never re-grounded to a navigation link, however many words they share.
+const navEl = (key: string, name: string, role: SemanticElement["role"], extra: Partial<SemanticElement> = {}): SemanticElement => ({ key, name, role, visible: true, path: [], ...extra }) as SemanticElement;
+const navActions = [navEl("link:leads", "Leads", "link", { href: "/sandbox/crm/leads" }), navEl("link:opps", "Opportunities", "link", { href: "/sandbox/crm/opportunities" }), navEl("button:actions", "Actions", "button", { popup: true, expanded: false }), navEl("link:details", "Details", "link", { href: "#" })];
+const navPage: PageModel = { ...page, url: "/sandbox/crm/leads/L-1", elements: navActions, fields: [], actions: navActions };
+check("a renamed menu button does not land on a navigation link that shares a word", ground({ name: "Lead tools", role: "button", kind: "action" }, navPage) === null);
+check("a renamed menu item does not land on a navigation link either", ground({ name: "Convert to opportunity", role: "menuitem", kind: "action" }, navPage) === null);
+check("a link the plan knew as a link still grounds to a link", ground({ name: "Lead list", role: "link", kind: "action" }, navPage)?.element.key === "link:leads");
+check("a button still grounds to a button by its synonym", ground({ name: "More options", role: "button", kind: "action" }, navPage)?.element.key === "button:actions");
+check("an in-page link without a destination stays a candidate for a button", ground({ name: "Show details", role: "button", kind: "action" }, navPage)?.element.key === "link:details");
+
 console.log(failed ? `\n${failed} check(s) failed` : "\nAll checks passed");
 process.exit(failed ? 1 : 0);
