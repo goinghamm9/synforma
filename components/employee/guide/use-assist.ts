@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import type { RemoteDecider } from "@/lib/synforma/decisions";
 import { runWorkflow } from "@/lib/synforma/engine/runner";
 import { useSynforma } from "@/lib/synforma/store";
 import type { Requirement, Workflow } from "@/lib/synforma/types";
@@ -27,6 +28,7 @@ export function useAssist({
   requestApproval,
   dismissIntervention,
   setCursor,
+  decider,
 }: {
   refs: GuideRefs;
   programId: string;
@@ -38,6 +40,8 @@ export function useAssist({
   requestApproval: ApprovalsApi["requestApproval"];
   dismissIntervention: InterventionsApi["dismissIntervention"];
   setCursor: OverlayApi["setCursor"];
+  /** Decision model for the assist run; null → lexical rules only. */
+  decider: RemoteDecider | null;
 }): AssistApi {
   const { driverRef, runIdRef, phaseRef, interventionRef, assistingRef, observerRef } = refs;
   const [assistingStepId, setAssistingStepId] = useState<string | null>(null);
@@ -62,6 +66,7 @@ export function useAssist({
           context,
           actor: "human",
           policy: { commits: st.settings.requireApprovalForCommit ? "ask" : "auto", scope: "all", steps: [stepId] },
+          decider: decider ?? undefined,
           hooks: {
             onEvent: (type, data, sid, message) => {
               // The observer already tracks the person's step progress; keep the runner's action-level trail.
@@ -88,7 +93,7 @@ export function useAssist({
         observerRef.current?.touch();
       }
     },
-    [assistingRef, context, currentRun, dismissIntervention, driverRef, interventionRef, observerRef, phaseRef, programId, record, requestApproval, requirements, runIdRef, setCursor, workflow],
+    [assistingRef, context, currentRun, decider, dismissIntervention, driverRef, interventionRef, observerRef, phaseRef, programId, record, requestApproval, requirements, runIdRef, setCursor, workflow],
   );
 
   return { assistingStepId, assistStep };

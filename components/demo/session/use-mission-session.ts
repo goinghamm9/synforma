@@ -1,9 +1,11 @@
 "use client";
 import * as React from "react";
 import { toast } from "sonner";
+import { useDecider } from "@/components/decisions/use-decider";
 import { useTrustLayer, type TrustLayerApi } from "@/components/trust";
 import { useSynforma } from "@/lib/synforma/store";
 import { MINIMUM_RUNS } from "@/lib/synforma/engine/metrics";
+import type { DecisionStatus } from "@/lib/synforma/decisions";
 import { fetchPlannerStatus, plannerVendor, resolvePlannerKind } from "@/lib/synforma/planner";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
 import { contextFor, DEMO_TARGETS, targetById, targetForProgram, TARGET_APPS, type TargetApp } from "@/lib/synforma/targets";
@@ -42,6 +44,10 @@ export interface MissionSession {
   plannerLabel: string;
   /** Short planner name for prose ("heuristic planner" / "Claude planner"). */
   plannerName: string;
+  /** What /api/decide/status reported; null until fetched. */
+  decisionStatus: DecisionStatus | null;
+  /** "Jev · Cloudflare Workers AI · typesafe/jev" when a decision model is configured, else null. */
+  deciderLabel: string | null;
   connection: ConnectionApi;
   discovery: DiscoveryApi;
   act: ActRunApi;
@@ -144,7 +150,8 @@ export function useMissionSession(): MissionSession {
   }, []);
 
   const discovery = useDiscovery({ connection, programId, plannerStatus, setPhase, setContext, target });
-  const act = useActRun({ connection, programId, context, applyRegroundings, setUiVariant, target });
+  const decision = useDecider();
+  const act = useActRun({ connection, programId, context, applyRegroundings, setUiVariant, target, decider: decision.decider });
   const synth = useSyntheticRuns({ connection, programId, context });
   const recording = useRecording({ programId, currentRunId: act.state.runId });
 
@@ -410,6 +417,8 @@ export function useMissionSession(): MissionSession {
     plannerKind,
     plannerLabel,
     plannerName,
+    decisionStatus: decision.status,
+    deciderLabel: decision.label,
     connection,
     discovery,
     act,

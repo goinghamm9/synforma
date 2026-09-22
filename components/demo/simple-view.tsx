@@ -83,7 +83,7 @@ function ConnectStage() {
 }
 
 function ProgressLine({ program }: { program: Program | null }) {
-  const { discovery, plannerName } = useMissionSession();
+  const { discovery, plannerName, deciderLabel } = useMissionSession();
   const d = discovery.state;
   const c = d.counters;
   const n = (v: number) => <span className="mono-data text-ink">{v}</span>;
@@ -113,6 +113,11 @@ function ProgressLine({ program }: { program: Program | null }) {
           </>
         ) : null}
         {n(workflow.steps.length)} steps · {plannerName}
+        {deciderLabel ? (
+          <>
+            {" "}· decisions by <span title={deciderLabel}>Jev</span>
+          </>
+        ) : null}
       </p>
     );
   return null;
@@ -207,7 +212,7 @@ function ObjectiveStage({ program }: { program: Program | null }) {
 
 function ResultCard({ program, state }: { program: Program; state: ActState }) {
   const s = useMissionSession();
-  const { act, trust, uiVariant, uiBusy, programLedger, toggleUi, undoLedger, reviewEvidence, setDemoView } = s;
+  const { act, trust, uiVariant, uiBusy, programLedger, toggleUi, undoLedger, reviewEvidence, setDemoView, deciderLabel } = s;
   const result = state.result!;
   const running = act.state.status === "running";
   const fieldReqs = program.parsed?.requirements.filter((r) => r.kind === "field") ?? [];
@@ -230,6 +235,16 @@ function ResultCard({ program, state }: { program: Program; state: ActState }) {
         </span>
         <span className="text-xs text-slate">
           · <span className="mono-data">{result.regroundings}</span> re-grounding{result.regroundings === 1 ? "" : "s"}
+          {result.decisions?.asked ? (
+            <>
+              {" "}
+              ·{" "}
+              <span className="mono-data" data-testid="simple-decisions" data-asked={result.decisions.asked} data-accepted={result.decisions.accepted}>
+                {result.decisions.accepted}/{result.decisions.asked}
+              </span>{" "}
+              Jev decision{result.decisions.asked === 1 ? "" : "s"} used
+            </>
+          ) : null}
           {state.startedAt && state.endedAt ? ` · ${formatDuration(state.endedAt - state.startedAt)}` : ""}
           {state.uiVariant ? ` · UI ${state.uiVariant}` : ""}
         </span>
@@ -242,7 +257,10 @@ function ResultCard({ program, state }: { program: Program; state: ActState }) {
             Self-healed {changes.length} change{changes.length === 1 ? "" : "s"}
           </div>
           <ChangeList changes={changes} />
-          <p className="text-[11px] text-slate">The vendor renamed these controls. Each was re-resolved by meaning and re-verified by execution; nothing was re-configured.</p>
+          <p className="text-[11px] text-slate">
+            The vendor renamed these controls. Each was re-resolved by meaning and re-verified by execution; nothing was re-configured.
+            {changes.some((c) => c.decidedBy) ? ` Where the lexical rules were unsure, ${deciderLabel ?? "the decision model"} chose, with the probability shown.` : ""}
+          </p>
         </div>
       ) : null}
       {state.trustStop ? <TrustStopCard trustStop={state.trustStop} step={stoppedStep} onReviewEvidence={openEvidence} /> : null}

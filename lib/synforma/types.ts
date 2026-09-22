@@ -390,6 +390,7 @@ export type RunEventType =
   | "ledger_rollback"
   | "demonstration_recorded"
   | "claim_contested"
+  | "decision"
   | "note";
 
 export interface RunEvent {
@@ -826,6 +827,8 @@ export interface SynformaSettings {
   demoView: "simple" | "advanced";
   /** Target application chosen for the next program (id from lib/synforma/targets.ts). */
   demoTarget: string;
+  /** "auto": consult the decision model (Jev) when the server has credentials; "off": the lexical rules alone. */
+  decisionPreference: "auto" | "off";
 }
 
 export const DEFAULT_SETTINGS: SynformaSettings = {
@@ -838,4 +841,5 @@ export const DEFAULT_SETTINGS: SynformaSettings = {
   treatmentShare: 0.5,
   demoView: "simple",
   demoTarget: "crm",
+  decisionPreference: "auto",
 };

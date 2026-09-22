@@ -41,6 +41,12 @@ const ROLE_FAMILIES: Record<string, ElementRole[]> = {
   switch: ["switch", "checkbox"],
 };
 
+/** True when an element of role `actual` could be the control the plan knew as role `expected` (the same role or its family). */
+export function roleCompatible(expected: ElementRole | undefined, actual: ElementRole): boolean {
+  if (!expected) return true;
+  return actual === expected || Boolean(ROLE_FAMILIES[expected]?.includes(actual));
+}
+
 export function scoreCandidate(q: GroundingQuery, el: SemanticElement): GroundingCandidate {
   const reasons: string[] = [];
   let score = 0;

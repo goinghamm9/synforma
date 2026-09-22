@@ -7,6 +7,7 @@ import { ActorBadge, OutcomeBadge } from "./bits";
 
 const TONE: Partial<Record<RunEvent["type"], string>> = {
   action_regrounded: "bg-verdant-soft text-verdant",
+  decision: "bg-surface-2 text-graphite",
   action_failed: "text-signal",
   run_failed: "text-signal",
   validation_error: "text-amber",

@@ -1,4 +1,5 @@
 "use client";
+import { useDecider } from "@/components/decisions/use-decider";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { IframeDriver } from "@/lib/synforma/interaction/driver";
 import { HumanObserver, type ChecklistItem } from "@/lib/synforma/engine/observer";
@@ -119,8 +120,9 @@ export function useGuideRun(program: Program, iframeRef: RefObject<HTMLIFrameEle
   const { handleSignal, dismissIntervention, setQuiet, setLastPointer, setLastKeyboard, resetForRun: resetInterventions, clearForFinish: clearInterventions } = interventions;
   const approvals = useApprovals({ refs, programId: program.id });
   const { approval, requestApproval, decideApproval, clear: clearApproval } = approvals;
-  const { assistingStepId, assistStep } = useAssist({ refs, programId: program.id, workflow, requirements, context, record, currentRun, requestApproval, dismissIntervention, setCursor });
-  const gid = useGetItDone({ refs, program, workflow, requirements, context, record, currentRun, approvals, dismissIntervention, setCursor, setPreferenceState });
+  const { decider } = useDecider();
+  const { assistingStepId, assistStep } = useAssist({ refs, programId: program.id, workflow, requirements, context, record, currentRun, requestApproval, dismissIntervention, setCursor, decider });
+  const gid = useGetItDone({ refs, program, workflow, requirements, context, record, currentRun, approvals, dismissIntervention, setCursor, setPreferenceState, decider });
   const { attachShortcut, beginRun: beginGetItDone, endRun: endGetItDone } = gid;
   const { fadedSteps, clearFaded, overrideProficiency, applyProficiency } = useProficiency({ refs, programId: program.id, workflow, record });
 
