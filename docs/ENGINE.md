@@ -41,7 +41,7 @@ drives a same-origin iframe). Only the planner route (`app/api/planner`) and the
 |---|---|---|
 | exact semantic key | 1.0 | short-circuits |
 | role | +0.25 exact, +0.12 compatible family, −0.3 mismatch | button ≈ menuitem ≈ link ≈ tab; textbox ≈ textarea ≈ combobox; checkbox ≈ switch ≈ radio |
-| name similarity | 0.6 × sim | sim = 0.55·overlap + 0.35·Jaccard + 0.15·containment over canonicalized tokens |
+| name similarity | 0.6 × sim | sim = 0.55·overlap + 0.35·Jaccard + 0.15·containment over canonicalized tokens; an uppercase abbreviation of 3–5 letters on one side collapses the phrase whose initials it spells on the other ("RLS protection" ≈ "Row level security") |
 | description / options | +0.15 × sim | "Approved" in a select's options matches "budget confirmed" |
 | hints | +0.25 × sim | requirement wording, values |
 | region | +0.10 × sim | same section heading |
@@ -83,6 +83,10 @@ Output: `DiscoveredState[]` (page model + replayable path + revealed groups) and
 - Population from role nouns (account executives, reps, employees…); object hint from "create a … X";
   entry hint from "from a … lead"; policy constraints = sentences with without/never/must not/
   restricted/confidential/policy; success = the sentence mentioning %, sustained, adoption or success.
+- Requirement kind: a list item phrased as a prohibition (without/never/must not/do not/restricted/
+  confidential/prohibited/not allowed) is a `policy` constraint; one that names something to create is
+  a `field` requirement even when the artifact is called a policy ("A policy that allows authenticated
+  users to read their own rows"); %/sustained/adoption mark an `outcome`.
 
 A language-model planner (Claude or Gemini through `RemotePlanner`) does the same task with a model
 and must return the same Zod-validated shape. Heuristic expectations are kept when the model omits
@@ -139,8 +143,11 @@ whole workflow, `guide` on an action class the contract sets to `never` abandons
 forbids autonomy"). Then for each action: in routine scope, skip actions whose requirement needs
 judgment (`note { skippedJudgment }`) and stop before the commit click (`note { stoppedBeforeCommit }`,
 outcome `completed`, nothing verified). Resolve the live field (re-grounding by meaning if the key is
-gone), resolve the value, perform, emit `action_executed` (+ `action_regrounded`). Menu items are reached
-by opening the popup buttons first. If a click does not advance and alerts appear → `validation_error`,
+gone), resolve the value, perform, emit `action_executed` (+ `action_regrounded`). A field that is not on
+the screen is first looked for behind the best-named opener and the closed tabs; if the form continues
+on later steps of the same route, the fill is carried forward (`note { deferred }`) and retried at the
+start of each later step, so a field the vendor moved to a tab on the review step is still filled. Menu
+items are reached by opening the popup buttons first. If a click does not advance and alerts appear → `validation_error`,
 repair invalid fields once (dates → ISO, selects → first real option) and retry. Before a commit click
 with `commits: "ask"` → `approval_requested` with the collected payload; denial → `approval_denied`,
 `run_abandoned`. A failed essential action (navigation, Next, commit) → `run_failed`.

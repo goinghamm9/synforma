@@ -121,10 +121,16 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
     return r;
   };
 
+  // Fills whose field was not on the planned screen: a vendor update may have moved it to a later screen of the same
+  // form (a tab on the review step). They are retried at the start of each later step on that route.
+  const carried: { action: Action; route?: string }[] = [];
+
   for (const step of steps) {
     hooks.onEvent("step_entered", { title: step.title, mode: step.mode }, step.id, step.title);
     hooks.onStep?.(step, "entered");
     let page: PageModel = driver.snapshot().page;
+    const carriedHere = carried.filter((c) => c.route === step.route).map((c) => c.action);
+    if (carriedHere.length) carried.splice(0, carried.length, ...carried.filter((c) => c.route !== step.route));
 
     // Trust decision for this step (Autonomy Contract + evidence). Conflicting sources stop autonomy.
     if (policy.trust) {
@@ -145,7 +151,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       }
     }
 
-    for (const raw of step.actions) {
+    for (const raw of [...carriedHere, ...step.actions]) {
       let action: Action = { ...raw };
       if (routineOnly && isRequirementAction(action)) {
         const rid = requirementIdOfAction(action);
@@ -188,6 +194,12 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
               break;
             }
           }
+        }
+        if (!field && caps.expand && caps.synonyms && steps.some((x) => x.index > step.index && x.route === step.route)) {
+          // Not on this screen and the form continues: look for it on the next screens before giving up.
+          carried.push({ action: raw, route: step.route });
+          hooks.onEvent("note", { deferred: action.targetName, reason: "not on this screen" }, step.id, `"${action.targetName}" is not on this screen; Synforma will look for it on the next screens of this form`);
+          continue;
         }
         if (!field) {
           if (!caps.expand || !caps.synonyms) {

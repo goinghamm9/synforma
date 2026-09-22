@@ -165,7 +165,7 @@ CHROMIUM_PATH=/path/to/chrome node verify/stimulus.spec.js
 | `graph.spec.js` | Work Graph process map: sample graph, lenses, search, 3D toggle, seeded fixture, Runs lens after a Mission Control run, mobile |
 | `stimulus.spec.js` | Science → stimulus analysis import, chart and table, disclaimer wording; Record screen control in the advanced Act panel |
 | `sandbox-billing.spec.js`, `sandbox-data.spec.js`, `sandbox-erp.spec.js` | Each replica application by hand: its workflow on both UI versions, validation, the two small workflows, reset, mobile |
-| `targets.spec.js [ids]` | The engine on every target application: discover → plan → Act on v1 → vendor update → Act on v2 (self-healing); prints a summary row per app |
+| `targets.spec.js [ids]` | The engine on every target application: discover → plan → Act on v1 → vendor update → Act on v2 (self-healing); prints a summary row per app and exits non-zero unless every app completes both runs with all requirements verified |
 | `stimulus.spec.js` | The Science page's stimulus-analysis section: disclaimer wording, import of `verify/fixtures/stimulus-analysis.example.json` (synthetic values), list entry, small multiples, per-step table, persistence across a reload, removal, an invalid file rejected; then the advanced Act panel's Record screen button, present and either enabled or disabled with a stated reason (headless Chromium has no screen to share) |
 
 The advanced-view scripts seed `settings.demoView = "advanced"` in `localStorage` before loading, because

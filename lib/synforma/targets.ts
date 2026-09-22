@@ -118,7 +118,7 @@ Agents must not refund charges older than 90 days without a manager. Success is 
 const DATA: TargetApp = {
   id: "data",
   name: "Nimbus Data Console",
-  status: "preview",
+  status: "ready",
   category: "Developer console",
   replicaNote: "Fictional replica of a developer-console pattern; not affiliated with any vendor.",
   version: "2.14",
