@@ -1,5 +1,6 @@
 import type { IframeDriver } from "../interaction/driver";
-import { ground, type GroundingCandidate } from "../interaction/grounding";
+import { ground, roleCompatible, type GroundingCandidate } from "../interaction/grounding";
+import { ACCEPT_PROBABILITY, type Decider } from "../decisions/types";
 import { generalizeRoute } from "../interaction/snapshot";
 import { similarity } from "../interaction/text";
 import { anchorMatches, CONSENT_RE, resolveValue } from "../planner/heuristic";
@@ -82,12 +83,16 @@ export interface RunnerOptions {
   capabilities?: RunCapabilities;
   signal?: AbortSignal;
   ledger?: LedgerProvenance;
+  /** A decision model consulted when the lexical rules are unsure which field is which; omitted → rules only. */
+  decider?: Decider;
 }
 
 export interface RunnerResult {
   outcome: RunOutcome;
   requirementsMet: string[];
   regroundings: number;
+  /** Decision-model questions asked during the run, and how many answers the runner acted on. */
+  decisions: { asked: number; accepted: number };
   failedStepId?: string;
   error?: string;
   outcomeUrl?: string;
@@ -102,6 +107,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
   const requireApproval = policy.commits === "ask";
   const routineOnly = policy.scope === "routine";
   let regroundings = 0;
+  const decisions = { asked: 0, accepted: 0 };
   const collected: Record<string, string> = {};
   const steps = policy.steps ? workflow.steps.filter((s) => policy.steps!.includes(s.id)) : workflow.steps;
 
@@ -119,6 +125,46 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       );
     }
     return r;
+  };
+
+  /**
+   * The decision model's turn: the lexical rules found no field they recognise, so the screen's fields are put to the
+   * model as labelled options plus "none of these". A confident choice is a re-grounding decided by the model and is
+   * reported as such; "none" or a weak choice leaves the rules' verdict ("not here") in place. Every question and answer
+   * is an event, so the audit shows what was asked and what was done with it.
+   */
+  const decideField = async (page: PageModel, action: Action, step: WorkflowStep, via?: string): Promise<SemanticElement | null> => {
+    const decider = opts.decider;
+    if (!decider || !action.targetName) return null;
+    const candidates = page.fields.filter((f) => !f.disabled && roleCompatible(action.targetRole, f.role));
+    if (!candidates.length) return null;
+    const expected = action.targetName;
+    const requirement = requirements.find((r) => r.id === requirementIdOfAction(action))?.text;
+    const value = action.value && !action.value.startsWith("{{") ? action.value : undefined;
+    decisions.asked += 1;
+    const choice = await decider.chooseField({ expected: { name: expected, role: action.targetRole, region: action.targetRegion, value, requirement }, screen: { heading: page.heading, url: page.url }, candidates });
+    const by = decider.name;
+    if (!choice) {
+      hooks.onEvent("decision", { by, question: "field", expected, unavailable: true, reason: decider.lastError, screen: step.route ?? null }, step.id, `${by} gave no answer about "${expected}"${decider.lastError ? ` (${decider.lastError})` : ""}; lexical rules only`);
+      return null;
+    }
+    const p = Math.round(choice.probability * 100) / 100;
+    const base = { by, question: "field", expected, choice: choice.name, key: choice.key, probability: choice.probability, confidence: choice.confidence, latencyMs: choice.latencyMs, screen: step.route ?? null, via: via ?? null };
+    const field = choice.key ? (page.fields.find((f) => f.key === choice.key) ?? null) : null;
+    if (!field || choice.probability < ACCEPT_PROBABILITY) {
+      hooks.onEvent("decision", { ...base, accepted: false }, step.id, field ? `${by}: "${expected}" might be "${field.name}" (p ${p}), below the ${ACCEPT_PROBABILITY} acceptance threshold; not used` : `${by}: "${expected}" is not on this screen (p ${p})`);
+      return null;
+    }
+    decisions.accepted += 1;
+    regroundings += 1;
+    hooks.onEvent("decision", { ...base, accepted: true }, step.id, `${by}: "${expected}" is now "${field.name}" (p ${p})`);
+    hooks.onEvent(
+      "action_regrounded",
+      { from: expected, to: field.key, toName: field.name, decidedBy: by, probability: choice.probability, change: { type: via ? "ui_element_moved" : "ui_element_changed", screen: step.route ?? null, affectedStep: step.id, detectedAt: Date.now(), risk: step.commit ? "medium" : "low", decidedBy: by, probability: choice.probability, ...(via ? { via } : {}) } },
+      step.id,
+      `Re-grounded "${expected}" → "${field.name}"${via ? ` behind "${via}"` : ""} (decided by ${by}, p ${p})`,
+    );
+    return field;
   };
 
   // Fills whose field was not on the planned screen: a vendor update may have moved it to a later screen of the same
@@ -139,14 +185,14 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       if (trust.decision === "stop") {
         hooks.onEvent("run_abandoned", { reason: "conflicting sources", details: trust.reasons }, step.id, trust.reasons[0]);
         hooks.onStep?.(step, "failed");
-        return { outcome: "abandoned", requirementsMet: [], regroundings, failedStepId: step.id, error: trust.reasons[0] };
+        return { outcome: "abandoned", requirementsMet: [], regroundings, decisions, failedStepId: step.id, error: trust.reasons[0] };
       }
       if (trust.decision === "guide" && opts.actor === "agent" && !policy.steps) {
         const cls = trust.actionClass;
         if (policyFor(policy.trust.contract, cls) === "never") {
           hooks.onEvent("run_abandoned", { reason: "contract forbids autonomy", actionClass: cls }, step.id, `The Autonomy Contract never lets Synforma perform ${cls} actions`);
           hooks.onStep?.(step, "failed");
-          return { outcome: "abandoned", requirementsMet: [], regroundings, failedStepId: step.id, error: "Autonomy Contract: never" };
+          return { outcome: "abandoned", requirementsMet: [], regroundings, decisions, failedStepId: step.id, error: "Autonomy Contract: never" };
         }
       }
     }
@@ -164,7 +210,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       if (routineOnly && step.commit && isCommitAction(action, step)) {
         hooks.onEvent("note", { stoppedBeforeCommit: action.label }, step.id, `Stopped before "${action.targetName}" — your approval is needed to commit`);
         hooks.onStep?.(step, "completed");
-        return { outcome: "completed", requirementsMet: [], regroundings };
+        return { outcome: "completed", requirementsMet: [], regroundings, decisions };
       }
       // Substitute the concrete entry URL for pattern routes.
       if (action.kind === "navigate" && action.url) {
@@ -177,8 +223,13 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
         continue;
       }
       // Resolve templated values against the live field.
+      let decided = false;
       if (action.kind === "type" || action.kind === "select" || action.kind === "check") {
         let field = findField(page, action, caps, requirements);
+        if (!field && caps.synonyms) {
+          field = await decideField(page, action, step);
+          decided = Boolean(field);
+        }
         if (!field && caps.expand && caps.synonyms) {
           // A vendor update may have moved the field behind a tab or a disclosure: open the one whose name matches the field or the step.
           const byName = revealCandidate(page, [action.targetName ?? "", step.title]);
@@ -191,6 +242,11 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
             field = findField(page, action, caps, requirements);
             if (field) {
               hooks.onEvent("action_regrounded", { from: action.targetName, to: field.key, toName: field.name, change: { type: "ui_element_moved", screen: step.route ?? null, affectedStep: step.id, detectedAt: Date.now(), risk: "low", via: opener.name } }, step.id, `Found "${action.targetName}" behind "${opener.name}"`);
+              break;
+            }
+            field = await decideField(page, action, step, opener.name);
+            if (field) {
+              decided = true;
               break;
             }
           }
@@ -228,7 +284,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
           if (decision === "denied") {
             hooks.onEvent("approval_denied", {}, step.id, "Approval denied");
             hooks.onEvent("run_abandoned", { reason: "approval denied" }, step.id);
-            return { outcome: "abandoned", requirementsMet: [], regroundings, failedStepId: step.id, error: "Approval denied" };
+            return { outcome: "abandoned", requirementsMet: [], regroundings, decisions, failedStepId: step.id, error: "Approval denied" };
           }
           hooks.onEvent("approval_granted", {}, step.id, "Approval granted");
         }
@@ -270,7 +326,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
             after: afterVal !== undefined && targetKey ? { key: targetKey, value: afterVal } : undefined,
             approval: step.commit && isCommitAction(action, step) ? (requireApproval ? "granted" : "not_required") : "not_required",
             result: r.ok ? "ok" : "failed",
-            regrounded: r.regrounded,
+            regrounded: Boolean(r.regrounded) || decided,
           }),
         );
       }
@@ -297,7 +353,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
         if (isEssential(action, step)) {
           hooks.onEvent("run_failed", { stepId: step.id, error: r.error }, step.id);
           hooks.onStep?.(step, "failed");
-          return { outcome: "failed", requirementsMet: [], regroundings, failedStepId: step.id, error: r.error };
+          return { outcome: "failed", requirementsMet: [], regroundings, decisions, failedStepId: step.id, error: r.error };
         }
         continue;
       }
@@ -331,7 +387,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
         } else {
           hooks.onEvent("run_abandoned", { reason: "validation", alerts: page.alerts, simulated: true }, step.id);
           hooks.onStep?.(step, "failed");
-          return { outcome: "abandoned", requirementsMet: [], regroundings, failedStepId: step.id, error: page.alerts[0] };
+          return { outcome: "abandoned", requirementsMet: [], regroundings, decisions, failedStepId: step.id, error: page.alerts[0] };
         }
       }
       await sleep(40);
@@ -362,7 +418,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
   }
 
   if (policy.steps) {
-    return { outcome: "completed", requirementsMet: [], regroundings };
+    return { outcome: "completed", requirementsMet: [], regroundings, decisions };
   }
 
   // Outcome verification on the resulting screen.
@@ -381,10 +437,10 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
   hooks.onEvent("outcome_verified", { url: outcomeUrl, onOutcomeScreen: onOutcome, requirementsMet, labels: finalPage.definitions.slice(0, 24).map((d) => d.label) }, undefined, `Outcome screen ${onOutcome ? "reached" : "not recognized"}; ${requirementsMet.length}/${requirements.length} requirements verified`);
   if (!onOutcome) {
     hooks.onEvent("run_failed", { reason: "outcome screen not reached", url: outcomeUrl });
-    return { outcome: "failed", requirementsMet, regroundings, error: "Outcome screen not reached", outcomeUrl };
+    return { outcome: "failed", requirementsMet, regroundings, decisions, error: "Outcome screen not reached", outcomeUrl };
   }
-  hooks.onEvent("run_completed", { requirementsMet, outcomeUrl });
-  return { outcome: "completed", requirementsMet, regroundings, outcomeUrl };
+  hooks.onEvent("run_completed", { requirementsMet, outcomeUrl, decisions });
+  return { outcome: "completed", requirementsMet, regroundings, decisions, outcomeUrl };
 }
 
 function isRequirementAction(a: Action): boolean {

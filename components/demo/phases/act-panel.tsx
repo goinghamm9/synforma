@@ -274,6 +274,7 @@ export function ActPanel({ state, program, uiVariant, uiBusy, plannerName, requi
             <Stat label="Requirements" value={`${result.requirementsMet.length}/${fieldReqs.length}`} tone={result.requirementsMet.length === fieldReqs.length && fieldReqs.length > 0 ? "verdant" : "amber"} hint="verified on the outcome screen" />
             <Stat label="Duration" value={state.startedAt && state.endedAt ? formatDuration(state.endedAt - state.startedAt) : "—"} hint="including pacing" />
             <Stat label="Re-groundings" value={result.regroundings} tone={result.regroundings ? "verdant" : "ink"} hint={state.uiVariant ? `UI ${state.uiVariant}` : undefined} />
+            {result.decisions?.asked ? <Stat label="Decisions" value={`${result.decisions.accepted}/${result.decisions.asked}`} tone={result.decisions.accepted ? "verdant" : "ink"} hint="acted on / asked of Jev" /> : null}
           </div>
           {trustStop ? <TrustStopCard trustStop={trustStop} step={stoppedStep} onReviewEvidence={onReviewEvidence} /> : null}
           <ul className="space-y-1" data-testid="result-checklist">

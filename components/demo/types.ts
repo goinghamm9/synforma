@@ -30,7 +30,7 @@ export interface ConnectionInfo {
   sampleActions: string[];
 }
 
-export type LogLevel = "info" | "warn" | "action" | "heal" | "approval" | "done" | "change" | "trust";
+export type LogLevel = "info" | "warn" | "action" | "heal" | "approval" | "done" | "change" | "trust" | "decision";
 
 export interface LogLine {
   id: number;
@@ -72,6 +72,9 @@ export interface ChangeRecord {
   from: string;
   to: string;
   risk: string;
+  /** Set when a decision model chose the new control, with the probability it assigned. */
+  decidedBy?: string;
+  probability?: number;
 }
 
 /** The run was stopped by the trust layer before a step: sources conflict about what should happen there. */

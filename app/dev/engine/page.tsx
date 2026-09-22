@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef } from "react";
 import { IframeDriver } from "@/lib/synforma/interaction/driver";
+import { createDecider, fetchDecisionStatus } from "@/lib/synforma/decisions";
 import { explore, type DiscoveredState, type ExploreEvent } from "@/lib/synforma/engine/explorer";
 import { createGraph } from "@/lib/synforma/graph/work-graph";
 import { HeuristicPlanner } from "@/lib/synforma/planner/heuristic";
@@ -70,12 +71,14 @@ export default function EngineHarness() {
         return { parsed, workflow };
       },
       ledger: [] as LedgerEntry[],
-      async act(context: Record<string, string> = contextFor(T), approve = true, extra: { routineOnly?: boolean; useTrust?: boolean; onlySteps?: string[]; workflowOverride?: Workflow } = {}) {
+      async act(context: Record<string, string> = contextFor(T), approve = true, extra: { routineOnly?: boolean; useTrust?: boolean; onlySteps?: string[]; workflowOverride?: Workflow; noDecider?: boolean } = {}) {
         const workflow = extra.workflowOverride ?? ((api as Record<string, unknown>).workflow as Workflow);
         const parsed = (api as Record<string, unknown>).parsed as ParsedObjective;
         api.events = [];
         api.ledger = [];
         const claims = extra.useTrust ? ((api as Record<string, unknown>).claimsData as Claim[] | undefined) : undefined;
+        // As in Mission Control: the decision model when the server reports one (a test may mock the status route), else rules only.
+        const decider = extra.noDecider ? undefined : (createDecider(await fetchDecisionStatus(), "auto") ?? undefined);
         const result = await runWorkflow({
           driver,
           workflow,
@@ -89,6 +92,7 @@ export default function EngineHarness() {
             trust: extra.useTrust ? { contract: defaultContract(workflow), claims: claims ?? [] } : undefined,
           },
           ledger: { runId: "run_test", programId: "p_test", intent: workflow.title, decidedBy: "heuristic" },
+          decider,
           hooks: {
             onEvent: (type, data, stepId, message) => api.events.push({ type, data, stepId, message }),
             requestApproval: async () => (approve ? "granted" : "denied"),

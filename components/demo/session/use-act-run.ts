@@ -3,6 +3,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { CLASS_SHORT, DECISION_LABEL } from "@/components/trust";
 import { useSynforma } from "@/lib/synforma/store";
+import type { RemoteDecider } from "@/lib/synforma/decisions";
 import { runWorkflow } from "@/lib/synforma/engine/runner";
 import type { ActionClass, ApprovalRequest, Run, RunEvent, TrustDecision } from "@/lib/synforma/types";
 import { shortId } from "@/lib/utils";
@@ -34,10 +35,12 @@ interface Options {
   /** Trust layer: fold a finished run's re-grounding events into the evidence. */
   applyRegroundings: (events: RunEvent[]) => void;
   setUiVariant: (v: UiVariant) => void;
+  /** Decision model for this run; null → lexical rules only. */
+  decider: RemoteDecider | null;
 }
 
 /** The agent's Act run: policy-gated execution with approval, action log, change list and ledger provenance. */
-export function useActRun({ connection, programId, context, applyRegroundings, setUiVariant, target }: Options): ActRunApi {
+export function useActRun({ connection, programId, context, applyRegroundings, setUiVariant, target, decider }: Options): ActRunApi {
   const { getDriver, driverLogSinkRef, abortRef, hideOverlays, syncUrl } = connection;
   const approvalResolver = React.useRef<((d: "granted" | "denied") => void) | null>(null);
   const approvalRequest = React.useRef<ApprovalRequest | null>(null);
@@ -84,9 +87,10 @@ export function useActRun({ connection, programId, context, applyRegroundings, s
     const run: Run = { id: runId, programId: prog.id, workflowId: workflow.id, actor: "agent", mode: "act", startedAt, interventionIds: [], uiVariant: variant, requirementsMet: [], regroundings: 0 };
     s.addRun(run);
     s.addEvent({ runId, type: "run_started", data: { actor: "agent", uiVariant: variant, planner: prog.planner } });
-    s.addAudit({ actor: "agent", action: "Run started", runId, programId: prog.id, detail: `Act mode · UI ${variant} · workflow by ${prog.planner} planner` });
+    s.addAudit({ actor: "agent", action: "Run started", runId, programId: prog.id, detail: `Act mode · UI ${variant} · workflow by ${prog.planner} planner${decider ? ` · decisions by ${decider.name}` : ""}` });
     setAct({ ...INITIAL_ACT, status: "running", runId, startedAt, uiVariant: variant });
     driver.paceMs = 350;
+    decider?.reset();
     driverLogSinkRef.current = (m) => {
       const heal = /^Re-grounded "(.+?)" → "(.+?)"/.exec(m);
       if (heal) pushActLog("heal", `Self-healed: ${heal[1]} → ${heal[2]}`);
@@ -106,6 +110,7 @@ export function useActRun({ connection, programId, context, applyRegroundings, s
         policy: { commits: s.settings.requireApprovalForCommit ? "ask" : "auto", scope: "all", trust: { contract, claims } },
         signal: ac.signal,
         ledger: { runId, programId: prog.id, intent: workflow.title, decidedBy: prog.planner },
+        decider: decider ?? undefined,
         hooks: {
           onLedger: (entry) => useSynforma.getState().addLedger(entry),
           onEvent: (type, data, stepId, message) => {
@@ -124,13 +129,20 @@ export function useActRun({ connection, programId, context, applyRegroundings, s
               }
               case "action_regrounded": {
                 regroundings += 1;
-                const d = data as { from?: string; to?: string; toName?: string | null; change?: { screen?: string | null; affectedStep?: string; risk?: string } } | undefined;
+                const d = data as { from?: string; to?: string; toName?: string | null; decidedBy?: string; probability?: number; change?: { screen?: string | null; affectedStep?: string; risk?: string } } | undefined;
                 const from = d?.from ?? "?";
                 const to = d?.toName ?? d?.to ?? "?";
-                const change: ChangeRecord = { id: ++changeSeq.current, t: Date.now(), stepId, screen: d?.change?.screen ?? step?.route ?? null, from, to, risk: d?.change?.risk ?? "low" };
+                const decided = d?.decidedBy ? ` · decided by ${d.decidedBy}${typeof d.probability === "number" ? ` (p ${d.probability.toFixed(2)})` : ""}` : "";
+                const change: ChangeRecord = { id: ++changeSeq.current, t: Date.now(), stepId, screen: d?.change?.screen ?? step?.route ?? null, from, to, risk: d?.change?.risk ?? "low", decidedBy: d?.decidedBy, probability: d?.probability };
                 setAct((a) => ({ ...a, regroundings, changes: [...a.changes, change] }));
-                pushActLog("change", `UI change detected on ${change.screen ?? "unknown screen"}: '${change.from}' is now '${change.to}' · ${change.risk} risk · re-verified by execution`);
-                store.addAudit({ actor: "synforma", action: "UI change detected", target: change.screen ?? undefined, runId, programId: prog.id, detail: `'${change.from}' is now '${change.to}' · ${change.risk} risk · ${step?.title ?? stepId ?? "step"} · re-verified by execution` });
+                pushActLog("change", `UI change detected on ${change.screen ?? "unknown screen"}: '${change.from}' is now '${change.to}' · ${change.risk} risk${decided} · re-verified by execution`);
+                store.addAudit({ actor: "synforma", action: "UI change detected", target: change.screen ?? undefined, runId, programId: prog.id, detail: `'${change.from}' is now '${change.to}' · ${change.risk} risk${decided} · ${step?.title ?? stepId ?? "step"} · re-verified by execution` });
+                break;
+              }
+              case "decision": {
+                const d = data as { by?: string; expected?: string; unavailable?: boolean } | undefined;
+                pushActLog("decision", message ?? "Decision");
+                store.addAudit({ actor: "synforma", action: d?.unavailable ? `${d?.by ?? "Decision model"} unavailable` : `Decision by ${d?.by ?? "model"}`, target: d?.expected, runId, programId: prog.id, detail: message });
                 break;
               }
               case "approval_requested":
@@ -202,7 +214,7 @@ export function useActRun({ connection, programId, context, applyRegroundings, s
       setAct((a) => ({ ...a, status: "done", result, endedAt, regroundings: result.regroundings, currentStepId: null }));
       syncUrl();
       const total = parsed.requirements.filter((r) => r.kind === "field").length;
-      if (result.outcome === "completed") toast.success(`Run completed — ${result.requirementsMet.length}/${total} requirements verified${result.regroundings ? ` · ${result.regroundings} self-healed` : ""}`);
+      if (result.outcome === "completed") toast.success(`Run completed — ${result.requirementsMet.length}/${total} requirements verified${result.regroundings ? ` · ${result.regroundings} self-healed` : ""}${result.decisions?.accepted ? ` · ${result.decisions.accepted} decided by ${decider?.name ?? "the decision model"}` : ""}`);
       else toast.warning(`Run ${result.outcome}${result.error ? `: ${result.error}` : ""}`);
     } catch (e) {
       driverLogSinkRef.current = null;
@@ -215,7 +227,7 @@ export function useActRun({ connection, programId, context, applyRegroundings, s
       store.addAudit({ actor: "agent", action: aborted ? "Run stopped by operator" : "Run failed", runId, programId: prog.id, detail: aborted ? undefined : errorMessage(e) });
       setAct((a) => ({ ...a, status: aborted ? "stopped" : "error", error: aborted ? null : errorMessage(e), endedAt, currentStepId: null }));
     }
-  }, [abortRef, applyRegroundings, context, driverLogSinkRef, getDriver, hideOverlays, programId, pushActLog, setUiVariant, syncUrl, target]);
+  }, [abortRef, applyRegroundings, context, decider, driverLogSinkRef, getDriver, hideOverlays, programId, pushActLog, setUiVariant, syncUrl, target]);
 
   const stop = React.useCallback(() => {
     abortRef.current?.abort();

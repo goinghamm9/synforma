@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { RemoteDecider } from "@/lib/synforma/decisions";
 import { runWorkflow } from "@/lib/synforma/engine/runner";
 import { useSynforma } from "@/lib/synforma/store";
 import type { Action, AssistancePreference, Program, Requirement, Workflow } from "@/lib/synforma/types";
@@ -57,6 +58,7 @@ export function useGetItDone({
   dismissIntervention,
   setCursor,
   setPreferenceState,
+  decider,
 }: {
   refs: GuideRefs;
   program: Program;
@@ -69,6 +71,8 @@ export function useGetItDone({
   dismissIntervention: InterventionsApi["dismissIntervention"];
   setCursor: OverlayApi["setCursor"];
   setPreferenceState: (preference: AssistancePreference) => void;
+  /** Decision model for Get It Done runs; null → lexical rules only. */
+  decider: RemoteDecider | null;
 }): GetItDoneApi {
   const { driverRef, runIdRef, phaseRef, currentStepRef, interventionRef, assistingRef, observerRef, preferenceRef, getItDoneRef } = refs;
   const { requestApproval, hasPending } = approvals;
@@ -97,6 +101,7 @@ export function useGetItDone({
         context,
         actor: "human",
         policy: { commits: "auto", scope: "all", steps: [step.id] }, // the person approved a moment ago
+        decider: decider ?? undefined,
         hooks: {
           onEvent: (type, data, sid, message) => {
             if (type === "step_entered" || type === "step_completed" || type === "run_completed") return;
@@ -130,7 +135,7 @@ export function useGetItDone({
       setCursor(null);
       observerRef.current?.touch();
     }
-  }, [assistingRef, context, currentRun, driverRef, observerRef, phaseRef, program.id, record, requirements, runIdRef, setCursor, workflow]);
+  }, [assistingRef, context, currentRun, decider, driverRef, observerRef, phaseRef, program.id, record, requirements, runIdRef, setCursor, workflow]);
 
   const openGetItDoneApproval = useCallback(() => {
     const g = gidRef.current;
@@ -191,6 +196,7 @@ export function useGetItDone({
         context,
         actor: "human",
         policy: { commits: "ask", scope: "routine", steps: remaining.map((s) => s.id) },
+        decider: decider ?? undefined,
         hooks: {
           onEvent: (type, data, sid, message) => {
             if (type === "step_entered" || type === "step_completed" || type === "run_completed") return;
@@ -250,7 +256,7 @@ export function useGetItDone({
       setCursor(null);
       observerRef.current?.touch();
     }
-  }, [assistingRef, context, currentRun, currentStepRef, dismissIntervention, driverRef, getItDoneRef, interventionRef, observerRef, openGetItDoneApproval, phaseRef, preferenceRef, program.id, record, requirements, runIdRef, setCursor, workflow]);
+  }, [assistingRef, context, currentRun, currentStepRef, decider, dismissIntervention, driverRef, getItDoneRef, interventionRef, observerRef, openGetItDoneApproval, phaseRef, preferenceRef, program.id, record, requirements, runIdRef, setCursor, workflow]);
 
   const getItDoneNowSync = useCallback(() => {
     void getItDoneNow();
