@@ -182,12 +182,15 @@ export function useMissionSession(): MissionSession {
       setPhaseState(wanted);
       void connect(t, true);
     } else {
-      // A link such as /demo?target=billing picks the application for the next program.
+      // A link such as /demo?target=billing picks the application for the next program; otherwise the stored choice
+      // applies. Either way the work context is derived here: the lazy initial state ran before hydration, when the
+      // stored target was not known yet, so it may describe another application.
       const wanted = new URLSearchParams(window.location.search).get("target");
-      if (wanted && TARGET_APPS.some((t) => t.id === wanted) && wanted !== s.settings.demoTarget) {
-        s.setSettings({ demoTarget: wanted });
-        setContext(contextFor(targetById(wanted)));
-      }
+      const id = wanted && TARGET_APPS.some((t) => t.id === wanted) ? wanted : s.settings.demoTarget;
+      if (id !== s.settings.demoTarget) s.setSettings({ demoTarget: id });
+      const t = targetById(id);
+      setContext(contextFor(t));
+      setUiVariant(readSandboxUiVariant(t.uiVersionKey));
     }
     setPhaseReady(true);
   }, [hydrated, phaseReady, connect]);

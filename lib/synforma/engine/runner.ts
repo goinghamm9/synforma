@@ -474,10 +474,13 @@ async function repairValidation(
     let value = "";
     const alertText = page.alerts.join(" ");
     if (/already exists|already taken|already in use|must be unique|is taken|duplicate name/i.test(alertText) && f.value) {
-      // A name the application already has: keep the person's wording, add a counter.
-      const m = /^(.*?)(?:[_ -](\d+))?$/.exec(f.value);
+      // A name the application already has: keep the person's wording, add a counter in the name's own style
+      // (snake_case keeps underscores, spaced names get a space, a single word gets the digits appended).
+      const m = /^(.*?)(?:[_ -]?(\d+))?$/.exec(f.value);
+      const base = m ? m[1] : f.value;
       const n = m && m[2] ? Number(m[2]) + 1 : 2;
-      value = /[_]/.test(f.value) || !/\s/.test(f.value) ? `${m ? m[1] : f.value}_${n}` : `${m ? m[1] : f.value} ${n}`;
+      const separator = /_/.test(base) ? "_" : /\s/.test(base) ? " " : "";
+      value = `${base}${separator}${n}`;
     } else if (/yyyy-mm-dd|date/i.test(alertText) || /date/i.test(f.name)) {
       const d = new Date();
       d.setDate(d.getDate() + 7);
