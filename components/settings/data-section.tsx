@@ -5,12 +5,14 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Badge, Button, Progress } from "@/components/ui";
 import { useSynforma } from "@/lib/synforma/store";
+import { TARGET_APPS } from "@/lib/synforma/targets";
 import type { Program } from "@/lib/synforma/types";
 import { ConfirmDialog } from "./confirm-dialog";
 import { FieldRow, SettingsSection, StatusLine } from "./section";
 
 const STORE_KEY = "synforma-store-v1";
-const SANDBOX_KEYS = ["meridian-crm-db", "meridian-ui-version"];
+/** Everything the five sandbox applications keep in this browser (their records and UI versions). */
+const SANDBOX_KEYS = TARGET_APPS.flatMap((t) => [...t.storageKeys]);
 /** Browsers commonly allow about 5 MB of localStorage per origin; shown as an estimate only. */
 const ASSUMED_QUOTA_BYTES = 5 * 1024 * 1024;
 
@@ -346,7 +348,7 @@ export function DataSection() {
         <label className="flex cursor-pointer items-start gap-3 rounded-md border border-line p-3 text-sm text-graphite">
           <input type="checkbox" className="mt-0.5 h-4 w-4 accent-ink" checked={alsoClearSandbox} onChange={(e) => setAlsoClearSandbox(e.target.checked)} />
           <span>
-            Also reset the Meridian CRM sandbox data (<code className="mono-data text-[12px]">meridian-crm-db</code>), returning the demo application to its seed records.
+            Also reset the sandbox applications&apos; data (<code className="mono-data text-[12px]">meridian-crm-db</code>, <code className="mono-data text-[12px]">ledgerline-billing-db</code>, <code className="mono-data text-[12px]">nimbus-data-db</code>, <code className="mono-data text-[12px]">atlas-erp-db</code>, <code className="mono-data text-[12px]">lumen-workspace-db</code> and their UI versions), returning every demo application to its seed records.
           </span>
         </label>
       </ConfirmDialog>

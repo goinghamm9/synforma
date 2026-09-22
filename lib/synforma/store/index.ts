@@ -215,11 +215,50 @@ export const useSynforma = create<SynformaState>()(
         activeProgramId: s.activeProgramId,
       }),
       merge: (persisted, current) => {
-        const p = persisted as Partial<SynformaState> | undefined;
-        const settings = { ...DEFAULT_SETTINGS, ...(p?.settings ?? {}) };
+        // Only a slice whose shape matches the current state (an object where an object is expected, an array
+        // where an array is expected) is taken from storage; anything else keeps its default, so that data
+        // written by an earlier version of Synforma can never keep the page from becoming ready.
+        const p = persisted && typeof persisted === "object" && !Array.isArray(persisted) ? (persisted as Record<string, unknown>) : {};
+        const accepted: Record<string, unknown> = {};
+        const rejected: string[] = [];
+        for (const [key, value] of Object.entries(p)) {
+          const expected = (current as unknown as Record<string, unknown>)[key];
+          // A default of null or undefined (activeProgramId) says nothing about the shape: such a value is taken as stored.
+          const sameShape =
+            expected === null || expected === undefined
+              ? true
+              : Array.isArray(expected)
+                ? Array.isArray(value)
+                : typeof expected === "object"
+                  ? value !== null && typeof value === "object" && !Array.isArray(value)
+                  : typeof value === typeof expected;
+          if (sameShape) accepted[key] = value;
+          else rejected.push(key);
+        }
+        if (rejected.length) console.warn(`[synforma] ignored stored data of an unexpected shape: ${rejected.join(", ")}`);
+        const settings = { ...DEFAULT_SETTINGS, ...((accepted.settings as Partial<SynformaSettings> | undefined) ?? {}) };
         // Earlier builds stored the vendor name as the preference; it now means "the configured language model".
         if ((settings.plannerPreference as string) === "gemini") settings.plannerPreference = "llm";
-        return { ...current, ...(p ?? {}), settings };
+        return { ...current, ...accepted, settings };
+      },
+      onRehydrateStorage: () => (_state, error) => {
+        if (!error) return;
+        // Unreadable storage (not JSON, a quota error): the page must still become usable. The raw value is
+        // kept under another key for recovery, and the store rehydrates from nothing. Deferred: with a
+        // synchronous storage this callback runs while the store is still being created.
+        console.error("[synforma] stored data could not be read; starting from an empty store", error);
+        queueMicrotask(() => {
+          try {
+            const raw = localStorage.getItem("synforma-store-v1");
+            if (raw !== null) {
+              localStorage.setItem(`synforma-store-v1.unreadable.${Date.now()}`, raw);
+              localStorage.removeItem("synforma-store-v1");
+            }
+          } catch {
+            // Storage unavailable: nothing to keep.
+          }
+          void useSynforma.persist.rehydrate();
+        });
       },
     },
   ),
