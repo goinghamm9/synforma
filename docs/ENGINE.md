@@ -54,6 +54,18 @@ Threshold 0.42; an ambiguity guard refuses when the top two are weak and nearly 
 timeline ≈ timeframe, next step ≈ next action, actions ≈ more options, advanced ≈ additional details,
 next ≈ continue, save ≈ submit, convert ≈ create ≈ new.
 
+**Decision model (optional).** When the runner's field lookup finds no candidate it recognises (§6) and a
+decision model is configured (`lib/synforma/decisions`: Jev by TypeSafe, through Cloudflare Workers AI or
+TypeSafe's API), the screen's enabled fields of a compatible role are put to the model as labelled options
+plus `none_of_these`, with a state that names the field the plan knew, its role, the literal value about
+to be entered and the requirement behind it. The model answers one label with a probability distribution
+and a confidence. A label at probability ≥ 0.8 (`ACCEPT_PROBABILITY`) is a re-grounding decided by the
+model (`action_regrounded` with `decidedBy` and `probability`); `none_of_these` or a weaker label leaves
+the rules' verdict ("not here") in place. The threshold is conservative on purpose: a wrong placement costs
+a requirement, while "not here" usually still succeeds through the tab search and the deferral to later
+screens. Every question is a `decision` event, so the audit shows what
+was asked and what was done with it. The model never overrides a candidate the rules accepted.
+
 ## 3. Autonomous discovery (`explorer.ts`)
 
 Breadth-first over URLs inside the application's base path, depth ≤ 5, ≤ 40 states, ≤ 2 instances per
@@ -146,7 +158,8 @@ judgment (`note { skippedJudgment }`) and stop before the commit click (`note { 
 outcome `completed`, nothing verified). Resolve the live field (re-grounding by meaning if the key is
 gone; the requirement's own wording joins the grounding hints, and a candidate is accepted only when it
 is recognisably the same field: a similar name (≥ 50%), the same acronym, or overlapping options, help
-text or hints; one that merely shares a generic word with the old name counts as "not here"), resolve
+text or hints; one that merely shares a generic word with the old name counts as "not here"; when the rules find nothing and a decision model is configured, the screen's
+fields are put to it and a choice at probability ≥ 0.8 is taken, §2), resolve
 the value (an option the requirement names outright wins; a capped duration takes the longest option
 within the cap), perform, emit `action_executed` (+ `action_regrounded`). A field that is not on the
 screen is first looked for behind the best-named opener and the closed tabs; if the form continues on
@@ -385,7 +398,7 @@ skeleton until `useHydrated()` is true. Never read the store during SSR.
 
 `snapshotDocument(doc, url)` → `{ page: PageModel, elements }`; `generalizeRoute(url)`;
 `describeState(page)`, `pageStateLabel(page)`. `ground(query, page, threshold = 0.42)` →
-`GroundingCandidate | null`; `candidatesFor`, `scoreCandidate`, `keywordsOf`. `similarity(a, b)`,
+`GroundingCandidate | null`; `candidatesFor`, `scoreCandidate`, `keywordsOf`, `roleCompatible(expected, actual)`. `similarity(a, b)`,
 `tokenize`, `slug`, `hashString`, `SYNONYM_GROUPS`.
 
 ### Driver — `@/lib/synforma/interaction/driver`
@@ -470,6 +483,37 @@ retried once with a corrective instruction while the deadline allows. `Anthropic
 `claude-opus-5` at `effort: "low"`: the tasks are extraction and mapping, and low effort keeps a call
 inside the deadline. On anything but 200 the client uses the heuristic result.
 
+## Decisions — `@/lib/synforma/decisions`
+
+```ts
+import { fetchDecisionStatus, createDecider, deciderLabel, RemoteDecider, ACCEPT_PROBABILITY } from "@/lib/synforma/decisions";
+const status = await fetchDecisionStatus();                          // { configured, provider, model?, via? } from /api/decide/status (cached)
+const decider = createDecider(status, settings.decisionPreference);  // RemoteDecider | null
+const choice = await decider?.chooseField({ expected: { name, role, value, requirement, region }, screen: { heading, url }, candidates: page.fields });
+// choice: { key | null, name | null, probability, confidence, latencyMs }, or null when the model could not be reached (decider.lastError says why)
+deciderLabel(status);                                                // "Jev · Cloudflare Workers AI · typesafe/jev"
+```
+
+`RemoteDecider` POSTs `{ state, questions }` to `/api/decide` with a 4 s deadline
+(`REMOTE_DECISION_DEADLINE_MS`), validates the reply with `decisions/protocol.ts`, counts `asked` and
+`answered`, and stops calling after `MAX_FAILURES` (3) consecutive failures until `reset()`.
+`buildFieldQuestion(input, candidates)` is the question the runner asks (labels `f1…fN` plus
+`none_of_these`); `eligibleCandidates` keeps enabled fields whose role is compatible with the expected
+control's (`roleCompatible`). The `Decider` interface (`decisions/types.ts`) is what the runner takes, so
+a test can pass a fake. `verify/decider.spec.ts` covers all of it without credentials.
+
+### Server side — `@/lib/synforma/decisions/server` and `app/api/decide` (never import from client code)
+
+`getDecisionProvider()` reads `TYPESAFE_API_KEY` (→ `JevTypeSafeProvider`, `POST /v1/systemone`) or
+`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN` (→ `JevCloudflareProvider`, Workers AI), honours
+`DECISION_PROVIDER` and `JEV_MODEL`, and returns a `DecisionProvider { name: "jev", model, via,
+decide({ state, questions, signal }) }` or null. `describeDecisionProvider()` is the status;
+`probeDecisionProvider(signal)` asks the fixed `PROBE_QUESTION` (a renamed CRM field) and reports the
+answer. Both transports send the shape of TypeSafe's SDK and normalise the reply (`extractAnswers`,
+`normalizeAnswer`: a choice must be one of the question's own labels, probabilities in [0, 1], a labelled
+confidence such as "high" becomes a number). `DecisionProviderError(kind: transport | auth | billing |
+route | output | aborted)`; messages never contain a credential (`redact`).
+
 ## Runner (Act / Assist / Get It Done) — `@/lib/synforma/engine/runner`
 
 ```ts
@@ -479,6 +523,7 @@ const result = await runWorkflow({
   ledger: { runId, programId, intent?, decidedBy? },  // LedgerProvenance; omit and no ledger entries are written
   capabilities?,                                       // RunCapabilities for synthetic personas (FULL_CAPABILITIES by default)
   signal?,
+  decider?,                                            // a Decider (RemoteDecider) consulted when the lexical field lookup is unsure
   hooks: {
     onEvent(type, data, stepId, message) {/* store.addEvent({ runId, type, data, stepId, message }) */},
     requestApproval: async (req) => "granted" | "denied",  // show the approval dialog; store.addApproval
@@ -486,7 +531,7 @@ const result = await runWorkflow({
     onLedger?(entry) {/* store.addLedger(entry) */},
   },
 });
-// result: { outcome: "completed" | "abandoned" | "failed", requirementsMet, regroundings, failedStepId?, error?, outcomeUrl? }
+// result: { outcome: "completed" | "abandoned" | "failed", requirementsMet, regroundings, decisions: { asked, accepted }, failedStepId?, error?, outcomeUrl? }
 ```
 
 Semantics of `policy` are in §6. How the UI uses it:

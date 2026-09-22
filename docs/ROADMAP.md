@@ -15,6 +15,9 @@ never automated, conflicting sources stop autonomy, no fabricated statistics, ci
   self-healing across the sandbox's two UI versions (`README.md`, "What is real and what is simulated").
 - The language-model planner is optional (Claude, OpenAI, Gemini or Grok, server-side, schema-validated).
   The heuristic planner is the default and deliberately simple.
+- The decision model is optional too (Jev by TypeSafe, server-side, through Cloudflare Workers AI or
+  TypeSafe's API): consulted only when the lexical field lookup is unsure, acted on only at probability
+  ≥ 0.8, and recorded with its probability.
 
 ## Demo library — this release
 
@@ -42,6 +45,9 @@ carried forward to later screens of the same form), not per application.
 - Claude provider next to Gemini behind one `LLMProvider` abstraction, with structured outputs and a
   provider check that needs no key; OpenAI and Grok (xAI) through one OpenAI-compatible provider.
 - Node runtime hosting on Netlify so the planner route works in production.
+- Jev (TypeSafe's System One model) behind one `DecisionProvider` abstraction with two transports, a
+  probe endpoint, a Settings section, and the runner's use of a calibrated choice for a field the rules
+  cannot place.
 
 ## Phase 2 — Supabase backend
 
@@ -85,11 +91,12 @@ Not built yet. The same autonomy contract classes, ledger and rollback apply to 
 - Security review of the extension permission model (Phase 3) and of the connector credentials (Phase 4).
 - Pilots with real users, with the privacy model in `docs/OPERATIONS.md` as the entry condition.
 
-## The four demos
+## The five demos
 
 | Demo | Recommended shape | Why |
 |---|---|---|
 | Claude | Two parts, both in the current product: the planner provider (objective parsing, field mapping, diagnosis and assistance wording through the server route, labelled in the UI, bounded by deadlines), and Lumen Workspace, a fictional AI-assistant workspace replica that Synforma teaches and drives like any other application | Shows the model improving understanding without owning structure, actions or citations, and shows adoption of an AI-assistant system itself, not just an LLM behind Synforma |
+| Jev (TypeSafe) | The decision provider in the current product: the runner's field re-grounding question, labelled with its probability in the log, the change list and the audit; next, requirement-to-field mapping during planning and option choice for capped or named values | Shows a System One model doing what it is for, a fast typed decision inside software with the probability in the open, while structure, actions and verification stay deterministic |
 | Stripe | Extension driver on the Stripe dashboard in test mode (Phase 3), then the Stripe API as an Act connector (Phase 4) | A real third-party UI with dialogs, menus and forms; test mode makes commits safe; the API path shows the same contract applied to calls |
 | Supabase | Extension driver on Supabase Studio (Phase 3), then the management API (Phase 4); the same Supabase project can host the Phase 2 backend | One vendor serves as target application and as backend, which keeps the demo honest about what is real |
 | SAP | Fiori-style sandbox replica for the UI story, labelled as such; SAP OData against the Business Accelerator Hub sandbox for the API story (Phase 4) | A real SAP tenant cannot be shown; the replica is declared a replica, and the OData sandbox is a genuine API surface |

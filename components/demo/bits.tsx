@@ -249,6 +249,7 @@ const LEVEL_CLASS: Record<LogLevel, string> = {
   done: "text-verdant",
   change: "bg-surface-2 text-ink",
   trust: "text-slate",
+  decision: "bg-surface-2 text-graphite",
 };
 
 /** Streaming log with auto-scroll while the user is near the bottom. */
@@ -319,6 +320,12 @@ export function ChangeList({ changes }: { changes: ChangeRecord[] }) {
           <span className="text-graphite">
             &lsquo;{c.from}&rsquo; is now &lsquo;{c.to}&rsquo;
           </span>
+          {c.decidedBy ? (
+            <span className="text-slate" data-testid="change-decided-by">
+              · decided by {c.decidedBy}
+              {typeof c.probability === "number" ? ` (p ${c.probability.toFixed(2)})` : ""}
+            </span>
+          ) : null}
           <span className={cn("ml-auto rounded-full border px-1.5 py-px text-[10.5px]", c.risk === "medium" || c.risk === "high" ? "border-amber/30 bg-amber-soft text-amber" : "border-line text-slate")}>{c.risk} risk</span>
         </li>
       ))}

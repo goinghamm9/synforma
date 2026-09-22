@@ -19,7 +19,7 @@ Live: **https://synforma.netlify.app** (the production build of `main`).
 | `/employee` | Employee view: do the workflow yourself with the Synforma overlay |
 | `/graph` | Work Graph as a 2D process map: Workflow, Application, Runs and Evidence lenses, with the 3D scene behind a toggle |
 | `/science` | Barrier model, intervention registry, evidence classes, decision policy, citations |
-| `/settings` | Planner preference, assistance and sensing controls, data export / import / delete |
+| `/settings` | Planner and decision-model preferences, assistance and sensing controls, data export / import / delete |
 | `/sandbox` | The five demo applications, each usable on its own |
 | `/sandbox/crm` | Meridian CRM (fictional CRM) |
 | `/sandbox/billing` | Ledgerline Billing (billing-dashboard replica) |
@@ -28,7 +28,7 @@ Live: **https://synforma.netlify.app** (the production build of `main`).
 | `/sandbox/assistant` | Lumen Workspace (AI-assistant workspace replica) |
 
 Everything runs in the browser against a same-origin iframe. All state lives in localStorage. Nothing
-leaves the browser except calls to the optional planner route.
+leaves the browser except calls to the optional planner and decision routes.
 
 ## Quick start
 
@@ -65,6 +65,33 @@ any call that has not answered within ten seconds. The model's answer is additiv
 requirement list stays the executable contract, the model adds titles, constraints, judgment flags and
 fills mapping gaps. It can improve understanding but cannot invent techniques, citations or statistics. Settings → Planner
 chooses Automatic, Heuristic only or Language model.
+
+### Optional: System One decisions (Jev)
+
+The engine makes small "which one?" decisions with lexical rules: which control is the renamed one
+after a vendor update, which field a requirement refers to. When those rules are unsure which field
+is which, the runner can put the screen's fields to **Jev**, TypeSafe's System One decision model, as
+a typed multiple-choice question ("which of these is the field the plan knew as *Data retention*, or
+none of these?"). Jev returns one option with a calibrated probability; it never writes text, never
+plans and never acts on its own. A choice at probability 0.8 or above is a re-grounding labelled
+"decided by Jev (p 0.93)" in the log, the change list and the audit; "none" or a weaker choice leaves
+the rules' verdict in place. Jev is reached through Cloudflare Workers AI or TypeSafe's API:
+
+```bash
+# Jev on Cloudflare Workers AI (model typesafe/jev)
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=      # a token with Workers AI read + edit
+# or Jev through TypeSafe's API (model jev-latest)
+TYPESAFE_API_KEY=
+```
+
+Credentials are read only on the server (`app/api/decide`). The browser sees `{ configured, provider,
+model, via }` from `/api/decide/status` and nothing else; `/api/decide/status?probe=1` asks the model
+one fixed question so the credentials and the route can be checked before a demo (Settings → Decisions
+has a button for it). Questions carry field names, roles, options, help text and the requirement's
+wording, never a person's typed text. A call that has not answered within 4 s is dropped and the rules
+decide alone; after three consecutive failures the run stops asking. Without credentials, or with
+Settings → Decisions set to Off, runs behave exactly as before.
 
 ## Five applications, one engine
 
@@ -163,7 +190,7 @@ Simulated or absent: the target application is a bundled sandbox (Meridian CRM) 
 update" is a switch. The interaction layer drives only a same-origin iframe, so third-party applications
 (SAP, Stripe, Supabase, Salesforce) cannot be reached yet; the connector tiles on the site are roadmap.
 There is no backend: all state is in one browser's localStorage, single tenant. The language-model
-planner is optional; the heuristic planner is deliberately simple. Synthetic users are the runner with
+planner and the decision model are optional; the heuristic planner is deliberately simple. Synthetic users are the runner with
 capabilities switched off and are labelled as simulation everywhere. No statistics are fabricated:
 metrics return null until enough stored runs exist, citations come only from
 `lib/synforma/science/citations.ts`, and Synforma never infers emotion, personality or employee worth.
@@ -186,6 +213,7 @@ screens a run showed, the predicted response of an average subject, not measurem
 ```bash
 npx tsc --noEmit -p . && npx eslint . && npm run build
 npx --yes tsx@4 verify/provider.spec.ts   # planner providers and schemas; no key needed
+npx --yes tsx@4 verify/decider.spec.ts    # decision model: transports, reply normalisation, the runner acting on a choice; no credentials needed
 npm run dev                               # in one terminal, port 3000; then, with CHROMIUM_PATH set:
 node verify/engine.spec.js    # discover → plan → act (v1) → act (v2 self-heal) → observe a scripted human
 node verify/friction.spec.js  # friction states, minimal interventions, DO_NOTHING when fluent, no typed values in events

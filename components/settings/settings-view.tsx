@@ -5,6 +5,7 @@ import { useSynforma } from "@/lib/synforma/store";
 import { AboutSection } from "./about-section";
 import { AssistanceSection } from "./assistance-section";
 import { DataSection } from "./data-section";
+import { DecisionsSection } from "./decisions-section";
 import { IndependenceSection } from "./independence-section";
 import { ObservationSection } from "./observation-section";
 import { PlannerSection } from "./planner-section";
@@ -15,6 +16,7 @@ const CONTENTS: { id: string; label: string }[] = [
   { id: "sensing", label: "Interaction sensing" },
   { id: "independence", label: "Your independence" },
   { id: "planner", label: "Planner" },
+  { id: "decisions", label: "Decisions" },
   { id: "observation", label: "Observation" },
   { id: "data", label: "Data" },
   { id: "about", label: "About this prototype" },
@@ -61,6 +63,7 @@ export function SettingsView() {
             <SensingSection />
             <IndependenceSection />
             <PlannerSection />
+            <DecisionsSection />
             <ObservationSection />
             <DataSection />
           </>
