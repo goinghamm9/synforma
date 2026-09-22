@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * Wire protocol between the browser and the server-side LLM planner.
  * Shared by the client (RemotePlanner) and the route handler so that every
- * provider (Claude, Gemini) must produce the same validated shapes.
+ * provider (Claude, OpenAI, Gemini, Grok) must produce the same validated shapes.
  */
 
 export const RequirementSchema = z.object({

@@ -332,8 +332,8 @@ export interface ParsedObjective {
   confidence: number;
 }
 
-/** Which reasoning engine produced a plan or a piece of assistance. "claude" and "gemini" are the server-side language models. */
-export type PlannerKind = "heuristic" | "claude" | "gemini";
+/** Which reasoning engine produced a plan or a piece of assistance. "claude", "openai", "gemini" and "grok" are the server-side language models behind /api/planner; "heuristic" is the deterministic planner. */
+export type PlannerKind = "heuristic" | "claude" | "openai" | "gemini" | "grok";
 
 export type ProgramStatus = "draft" | "discovering" | "understood" | "active" | "paused";
 

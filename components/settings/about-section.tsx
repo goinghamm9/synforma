@@ -13,7 +13,7 @@ const NOT_REAL: { title: string; body: string }[] = [
   { title: "No enterprise connectors", body: "No SSO, no CRM, HRIS or ticketing integrations. The only application Synforma can reach is the Meridian CRM sandbox bundled with this build." },
   { title: "No server persistence", body: "Everything lives in this browser's localStorage. There are no accounts, no roles, no shared data between people or devices." },
   { title: "Same-origin iframe only", body: "The interaction layer reads the DOM of a page on this origin. It cannot drive third-party websites, desktop applications or browser extensions." },
-  { title: "The language model is optional and narrow", body: "A language model (Claude or Gemini), when a key is configured on the server, parses objectives, maps fields, names barriers and phrases assistance. Without it the heuristic planner does the same job deterministically. Neither can add a technique or a citation." },
+  { title: "The language model is optional and narrow", body: "A language model (Claude, OpenAI, Gemini or Grok), when a key is configured on the server, parses objectives, maps fields, names barriers and phrases assistance. Without it the heuristic planner does the same job deterministically. Neither can add a technique or a citation." },
   { title: "Synthetic users are simulations", body: "They exercise the engine with reduced capabilities and are labeled as such everywhere; they are excluded from human timing and cohort statistics." },
 ];
 

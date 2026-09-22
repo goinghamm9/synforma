@@ -13,8 +13,8 @@ never automated, conflicting sources stop autonomy, no fabricated statistics, ci
 - The engine is real: discovery, planning, Act with approval and ledger, Guide with friction inference
   and DO_NOTHING, evidence and trust, demonstration capture, metrics from stored events, and semantic
   self-healing across the sandbox's two UI versions (`README.md`, "What is real and what is simulated").
-- The language-model planner is optional (Claude or Gemini, server-side, schema-validated). The
-  heuristic planner is the default and deliberately simple.
+- The language-model planner is optional (Claude, OpenAI, Gemini or Grok, server-side, schema-validated).
+  The heuristic planner is the default and deliberately simple.
 - The decision model is optional too (Jev by TypeSafe, server-side, through Cloudflare Workers AI or
   TypeSafe's API): consulted only where the lexical rules are unsure (a field or control during a run, a
   menu item during discovery, a requirement with no matching field, judgment), acted on only above a
@@ -44,7 +44,7 @@ carried forward to later screens of the same form), not per application.
   views (simple for the five-minute demo, advanced for the full instrument); documentation reduced to
   five documents.
 - Claude provider next to Gemini behind one `LLMProvider` abstraction, with structured outputs and a
-  provider check that needs no key.
+  provider check that needs no key; OpenAI and Grok (xAI) through one OpenAI-compatible provider.
 - Node runtime hosting on Netlify so the planner route works in production.
 - Jev (TypeSafe's System One model) behind one `DecisionProvider` abstraction with two transports, a
   probe endpoint, a Settings section, and the runner's use of a calibrated choice for a field the rules

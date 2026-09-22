@@ -6,7 +6,7 @@ import { AssistanceSchema, DiagnosisSchema, FieldMappingSchema, ParsedObjectiveS
 import type { AssistanceContent, ComposeAssistanceInput, DiagnoseInput, DiagnoseOutput, InferWorkflowInput, ParseObjectiveInput, Planner } from "./types";
 
 /**
- * RemotePlanner — browser-side client for the server-side LLM planner (Claude or Gemini).
+ * RemotePlanner — browser-side client for the server-side LLM planner (Claude, OpenAI, Gemini or Grok).
  *
  * The LLM runs only on the server (app/api/planner). It receives structured
  * inputs and must return JSON that validates against the protocol schemas.
