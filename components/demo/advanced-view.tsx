@@ -26,12 +26,16 @@ export function AdvancedView() {
         status={connection.status}
         info={connection.info}
         error={connection.error}
+        since={connection.since}
+        attempt={connection.attempt}
+        crashed={connection.crashed}
         appName={s.target.name}
         baseUrl={s.target.baseUrl}
         version={s.target.version}
         replicaNote={s.target.replicaNote}
         picker={<TargetPicker targets={s.targets} value={s.target.id} onChange={s.setTarget} locked={Boolean(program)} />}
         onConnect={() => void connection.connect(s.target)}
+        onResetData={() => void connection.resetTargetData(s.target)}
         onContinue={() => setPhase("objective")}
       />
     );

@@ -77,6 +77,22 @@ route; a static host works with `npm run build:static`.
   Export / Import to move a program between browsers.
 - The Work Graph's 3D view needs WebGL; the default process map does not.
 
+### If the Connect stage does not connect
+
+Connecting loads the application in an iframe and reads its home page. The stage never waits silently:
+"Preparing…" means the store saved in this browser is still loading (after 15 s it offers a reload);
+"Connecting… 12 s" counts the running attempt, and a first attempt that shows nothing is retried once
+automatically. An error names the condition: a frame from another origin, a blank page, the
+application's own error page, or nothing readable in time. Every sandbox application keeps its records
+in this browser (`localStorage`: `meridian-crm-db`, `ledgerline-billing-db`, `nimbus-data-db`,
+`atlas-erp-db`, `lumen-workspace-db`, plus a `*-ui-version` key each), and records written by an
+earlier version of the demo are the usual cause of an application that will not render: **Reset
+application data and retry** on the error removes them and connects again (also Settings → Data →
+Reset with the sandbox box ticked). A crashed application page says "<name> hit an error" and offers
+the same reset itself. Synforma's own store (`synforma-store-v1`) ignores stored slices of an
+unexpected shape and, when the value cannot be read at all, moves it to
+`synforma-store-v1.unreadable.<timestamp>` and starts empty, so the page always becomes ready.
+
 ## Environment variables
 
 All optional; read on the server only, never logged, never returned to the browser. `.env.example`

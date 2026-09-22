@@ -34,6 +34,8 @@ export interface TargetApp {
   entryUrl: string;
   /** localStorage key the app reads its UI version from; `${baseUrl}/settings?ui=v2` switches it. */
   uiVersionKey: string;
+  /** Every localStorage key the app keeps in this browser (its records and its UI version); removing them returns it to its seed state. */
+  storageKeys: readonly string[];
   objective: string;
   /** Work context Synforma may use when acting. Empty values are filled by `contextFor`. */
   context: Record<string, string>;
@@ -59,6 +61,7 @@ const CRM: TargetApp = {
   baseUrl: withBase("/sandbox/crm"),
   entryUrl: withBase("/sandbox/crm/leads/L-1001"),
   uiVersionKey: "meridian-ui-version",
+  storageKeys: ["meridian-crm-db", "meridian-ui-version"],
   objective: DEFAULT_OBJECTIVE,
   context: DEFAULT_CONTEXT,
   contextFields: CONTEXT_FIELDS,
@@ -83,6 +86,7 @@ const BILLING: TargetApp = {
   baseUrl: withBase("/sandbox/billing"),
   entryUrl: withBase("/sandbox/billing/payments/PAY-3001"),
   uiVersionKey: "ledgerline-ui-version",
+  storageKeys: ["ledgerline-billing-db", "ledgerline-ui-version"],
   objective: `I want support agents to issue a refund for a disputed charge in this system without breaking our refund policy.
 
 A compliant refund must have:
@@ -126,6 +130,7 @@ const DATA: TargetApp = {
   baseUrl: withBase("/sandbox/data"),
   entryUrl: withBase("/sandbox/data/projects/PRJ-2001/tables"),
   uiVersionKey: "nimbus-ui-version",
+  storageKeys: ["nimbus-data-db", "nimbus-ui-version"],
   objective: `I want developers to create a new table in this project with row level security switched on from the start.
 
 A correctly created table must have:
@@ -169,6 +174,7 @@ const ERP: TargetApp = {
   baseUrl: withBase("/sandbox/erp"),
   entryUrl: withBase("/sandbox/erp"),
   uiVersionKey: "atlas-ui-version",
+  storageKeys: ["atlas-erp-db", "atlas-ui-version"],
   objective: `I want requesters to create a purchase requisition for office equipment in this system that procurement can approve without sending it back.
 
 An approvable requisition must have:
@@ -221,6 +227,7 @@ const ASSISTANT: TargetApp = {
   baseUrl: withBase("/sandbox/assistant"),
   entryUrl: withBase("/sandbox/assistant/projects"),
   uiVersionKey: "lumen-ui-version",
+  storageKeys: ["lumen-workspace-db", "lumen-ui-version"],
   objective: `I want team leads to create a new assistant project in this workspace with approved instructions from the start.
 
 A correctly created project must have:
@@ -266,6 +273,19 @@ export function targetById(id: string | null | undefined): TargetApp {
 export function targetForProgram(program: { application: { baseUrl: string } } | null | undefined): TargetApp {
   if (!program) return CRM;
   return TARGET_APPS.find((t) => t.baseUrl === program.application.baseUrl) ?? CRM;
+}
+
+/**
+ * Remove everything the application keeps in this browser, so that its next load starts from its seed
+ * records. Returns false when storage is unavailable.
+ */
+export function resetTargetStorage(app: TargetApp): boolean {
+  try {
+    for (const key of app.storageKeys) window.localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Work context with time-dependent blanks filled (dates that must lie in the future). */

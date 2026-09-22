@@ -4,11 +4,18 @@ import { ArrowRight, Loader2, PlugZap, RefreshCw } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui";
 import type { ConnectionInfo } from "../types";
 import { ErrorNote, Eyebrow, KeyValue, Note, PanelHeader, Stat } from "../bits";
+import { useSecondsWhile } from "../use-elapsed";
 
 interface Props {
   status: "idle" | "connecting" | "connected" | "error";
   info: ConnectionInfo | null;
   error: string | null;
+  /** When the running connect started (epoch ms); shown as elapsed seconds after a few seconds. */
+  since?: number | null;
+  /** 2 while or after the automatic second attempt. */
+  attempt?: number;
+  /** The error came from the application's own error page: offer the data reset first. */
+  crashed?: boolean;
   appName: string;
   baseUrl: string;
   version: string;
@@ -17,11 +24,15 @@ interface Props {
   /** The target picker, rendered above the application card. */
   picker?: React.ReactNode;
   onConnect: () => void;
+  /** Remove what the application keeps in this browser and connect again. */
+  onResetData?: () => void;
   onContinue: () => void;
 }
 
-export function ConnectPanel({ status, info, error, appName, baseUrl, version, replicaNote, picker, onConnect, onContinue }: Props) {
+export function ConnectPanel({ status, info, error, since = null, attempt = 1, crashed = false, appName, baseUrl, version, replicaNote, picker, onConnect, onResetData, onContinue }: Props) {
   const connecting = status === "connecting";
+  const connectingFor = useSecondsWhile(connecting, since);
+  const connectingLabel = `Connecting…${connectingFor >= 3 ? ` ${connectingFor} s` : ""}${attempt > 1 ? " · second attempt" : ""}`;
   return (
     <div className="space-y-5 p-5">
       <PanelHeader
@@ -51,7 +62,7 @@ export function ConnectPanel({ status, info, error, appName, baseUrl, version, r
             {status !== "connected" ? (
               <Button onClick={onConnect} disabled={connecting} data-testid="connect-app">
                 {connecting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <PlugZap aria-hidden="true" />}
-                {connecting ? "Connecting…" : "Connect application"}
+                {connecting ? connectingLabel : "Connect application"}
               </Button>
             ) : (
               <Button variant="outline" size="sm" onClick={onConnect} disabled={connecting}>
@@ -63,7 +74,26 @@ export function ConnectPanel({ status, info, error, appName, baseUrl, version, r
         </CardContent>
       </Card>
 
-      {status === "error" ? <ErrorNote title="Could not connect" body={error ?? "The application did not load."} action={<Button size="sm" variant="outline" onClick={onConnect}>Try again</Button>} /> : null}
+      {status === "error" ? (
+        <div data-testid="connect-error" data-crashed={crashed}>
+          <ErrorNote
+            title={crashed ? "The application hit an error" : "Could not connect"}
+            body={error ?? "The application did not load."}
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={onConnect}>
+                  Try again
+                </Button>
+                {onResetData ? (
+                  <Button size="sm" variant={crashed ? "default" : "outline"} onClick={onResetData} data-testid="connect-reset-data">
+                    Reset application data and retry
+                  </Button>
+                ) : null}
+              </div>
+            }
+          />
+        </div>
+      ) : null}
 
       {status === "connected" && info ? (
         <section className="space-y-3" data-testid="connection-info">

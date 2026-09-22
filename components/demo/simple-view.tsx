@@ -7,7 +7,11 @@ import { cn, formatDuration } from "@/lib/utils";
 import { ChangeList, ErrorNote, LogView, ModeBadge, Note, OutcomeBadge, PanelSkeleton, TrustStopCard } from "./bits";
 import { useMissionSession } from "./session/context";
 import { TargetPicker } from "./target-picker";
+import { useSecondsWhile } from "./use-elapsed";
 import type { ActState } from "./phases/act-panel";
+
+/** After this long without the store becoming ready, the Connect stage says so and offers a reload. */
+const PREPARING_STALL_S = 15;
 
 /**
  * The one-screen view of Mission Control: three stages next to the live sandbox,
@@ -35,22 +39,33 @@ function Stage({ n, title, done, aside, testId, children }: { n: number; title: 
 
 function ConnectStage() {
   const { ready, connection, target, targets, setTarget, program } = useMissionSession();
-  const { status, error, connect } = connection;
+  const { status, error, connect, since, attempt, crashed, resetTargetData } = connection;
   // Connects automatically once the store is ready and nothing has been connected yet.
   React.useEffect(() => {
     if (!ready || status !== "idle") return;
     void connect(target);
   }, [ready, status, connect, target]);
+  // Two clocks: how long the running connect has taken (across its automatic second attempt), and how long
+  // the stage has waited for the store (the "idle" status). Neither should ever look like a hang.
+  const connectingFor = useSecondsWhile(status === "connecting", since);
+  const preparingFor = useSecondsWhile(status === "idle");
+  const stalled = status === "idle" && preparingFor >= PREPARING_STALL_S;
   const aside =
     status === "connected" ? (
       <Badge variant="verdant" data-testid="simple-connect-status">
         <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
         Connected
       </Badge>
-    ) : status === "connecting" || status === "idle" ? (
+    ) : status === "connecting" ? (
+      <Badge variant="muted" data-testid="simple-connect-status" data-attempt={attempt}>
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+        Connecting…{connectingFor >= 3 ? ` ${connectingFor} s` : ""}
+        {attempt > 1 ? " · second attempt" : ""}
+      </Badge>
+    ) : status === "idle" ? (
       <Badge variant="muted" data-testid="simple-connect-status">
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-        Connecting…
+        Preparing…
       </Badge>
     ) : (
       <Badge variant="signal" data-testid="simple-connect-status">
@@ -67,16 +82,36 @@ function ConnectStage() {
       </div>
       <p className="text-[11px] text-slate">{target.replicaNote}</p>
       <p className="text-xs leading-relaxed text-graphite">No connector, no selectors. Synforma reads the interface through the same generic semantics a screen reader uses.</p>
+      {stalled ? (
+        <div data-testid="simple-connect-stalled">
+          <ErrorNote
+            title="Still preparing"
+            body="Synforma is loading the work saved in this browser and has not finished. Reloading the page usually resolves it; Settings → Data can reset the stored data if it happens again."
+            action={
+              <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+                Reload
+              </Button>
+            }
+          />
+        </div>
+      ) : null}
       {status === "error" ? (
-        <ErrorNote
-          title="Could not connect"
-          body={error ?? "The application did not load."}
-          action={
-            <Button size="sm" variant="outline" onClick={() => void connect(target)}>
-              Try again
-            </Button>
-          }
-        />
+        <div data-testid="simple-connect-error" data-crashed={crashed}>
+          <ErrorNote
+            title={crashed ? "The application hit an error" : "Could not connect"}
+            body={error ?? "The application did not load."}
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => void connect(target)}>
+                  Try again
+                </Button>
+                <Button size="sm" variant={crashed ? "default" : "outline"} onClick={() => void resetTargetData(target)} data-testid="simple-connect-reset-data">
+                  Reset application data and retry
+                </Button>
+              </div>
+            }
+          />
+        </div>
       ) : null}
     </Stage>
   );
