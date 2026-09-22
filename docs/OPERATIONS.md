@@ -43,6 +43,11 @@ plugin `@netlify/plugin-nextjs`, Node 20. No base directory: the app is the whol
    Settings page shows it. Without a key the heuristic planner runs and the UI says so. For Jev decisions
    set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (or `TYPESAFE_API_KEY`) the same way;
    `/api/decide/status?probe=1` then asks the model one fixed question live (Settings → Decisions has a button).
+   Give every key the **Functions** and **Runtime** scopes only, not **Builds**: Synforma reads keys at
+   request time, and a build-scoped value ends up in the Next.js Turbopack cache, where Netlify's secrets
+   scanner finds it and fails the build ("Exposed secrets detected"). `netlify.toml` sets
+   `SECRETS_SCAN_OMIT_PATHS` to the two cache directories (`.next/cache`, `.netlify/.next/cache`, neither
+   of which is served) so that a key left on the Builds scope does not stop a deploy either.
 
 ### GitHub Pages (static export)
 
