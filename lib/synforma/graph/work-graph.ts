@@ -62,6 +62,17 @@ function rankStatus(a: NodeStatus, b: NodeStatus): NodeStatus {
   return order.indexOf(b) > order.indexOf(a) ? b : a;
 }
 
+/** Set a node's confidence to a calibrated value (upsertNode only ever raises it) and merge extra data. */
+export function annotateNode(graph: WorkGraph, id: string, patch: { confidence?: number; description?: string; data?: Record<string, unknown> }): GraphNode | null {
+  const node = graph.nodes.find((n) => n.id === id);
+  if (!node) return null;
+  if (patch.confidence !== undefined) node.confidence = Math.max(0, Math.min(1, patch.confidence));
+  if (patch.description) node.description = patch.description;
+  if (patch.data) node.data = { ...(node.data ?? {}), ...patch.data };
+  graph.updatedAt = Date.now();
+  return node;
+}
+
 export function upsertEdge(graph: WorkGraph, from: string, to: string, type: EdgeType, label?: string, weight?: number): GraphEdge {
   const id = `${type}:${from}->${to}`;
   const existing = graph.edges.find((e) => e.id === id);

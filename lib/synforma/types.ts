@@ -251,6 +251,17 @@ export interface Requirement {
     /** A duration that must be at most N days ("30 days or less", "no more than 90 days"). */
     atMostDays?: number;
   };
+  /** What a decision model contributed to this requirement, with the probabilities it assigned. */
+  decided?: {
+    by: string;
+    /** The field the model placed the requirement on, when the rules had no confident mapping. */
+    fieldKey?: string;
+    fieldName?: string;
+    probability?: number;
+    /** Probability that the requirement needs a person's judgment; applied only at or above the judgment threshold. */
+    judgmentProbability?: number;
+    judgmentApplied?: boolean;
+  };
 }
 
 export type ExecutionMode = "guide" | "assist" | "act";

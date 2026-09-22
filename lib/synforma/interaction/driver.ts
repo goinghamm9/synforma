@@ -189,6 +189,13 @@ export class IframeDriver {
     return this.last;
   }
 
+  /** Where an action would land right now, without acting: the element the rules pick and why; null when they find nothing. */
+  locate(action: Action): { model: SemanticElement; regrounded: boolean; reasons: string[] } | null {
+    this.snapshot();
+    const r = this.resolve(action);
+    return r ? { model: r.model, regrounded: r.regrounded, reasons: r.reasons } : null;
+  }
+
   /** Resolve the live element for an action; re-ground semantically when the key vanished. */
   resolve(action: Action): { el: Element; model: SemanticElement; regrounded: boolean; reasons: string[] } | null {
     const snap = this.last ?? this.snapshot();

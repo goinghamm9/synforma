@@ -7,6 +7,7 @@
 import { useEffect, useRef } from "react";
 import { IframeDriver } from "@/lib/synforma/interaction/driver";
 import { createDecider, fetchDecisionStatus } from "@/lib/synforma/decisions";
+import { annotatePlanDecisions, decidePlan, type PlanDecisions } from "@/lib/synforma/decisions/planning";
 import { explore, type DiscoveredState, type ExploreEvent } from "@/lib/synforma/engine/explorer";
 import { createGraph } from "@/lib/synforma/graph/work-graph";
 import { HeuristicPlanner } from "@/lib/synforma/planner/heuristic";
@@ -53,22 +54,26 @@ export default function EngineHarness() {
         if (url) await driver.goto(url);
         return driver.snapshot().page;
       },
-      async discover(startUrl = T.baseUrl, limits?: Record<string, number>) {
+      async discover(startUrl = T.baseUrl, limits?: Record<string, number>, extra: { noDecider?: boolean } = {}) {
         const graph = createGraph("g_test");
         const events: ExploreEvent[] = [];
-        const { states, stats } = await explore({ driver, startUrl, appName: T.name, graph, limits, onEvent: (e) => events.push(e) });
+        const decider = extra.noDecider ? undefined : (createDecider(await fetchDecisionStatus(), "auto") ?? undefined);
+        const { states, stats } = await explore({ driver, startUrl, appName: T.name, graph, limits, decider, onEvent: (e) => events.push(e) });
         (api as Record<string, unknown>).states = states;
         (api as Record<string, unknown>).graph = graph;
         return { states: states.map((s) => ({ id: s.id, label: s.label, route: s.route, fields: s.page.fields.map((f) => f.name), actions: s.page.actions.map((a) => a.name), revealed: s.revealed, depth: s.depth })), stats, graphCounts: { nodes: graph.nodes.length, edges: graph.edges.length }, logs: events.filter((e) => e.type === "log").map((e) => (e as { message: string }).message) };
       },
-      async plan(objective = T.objective) {
+      async plan(objective = T.objective, extra: { noDecider?: boolean } = {}) {
         const states = (api as Record<string, unknown>).states as DiscoveredState[];
         const graph = (api as Record<string, unknown>).graph as ReturnType<typeof createGraph>;
-        const parsed = await planner.parseObjective({ objectiveText: objective, appName: T.name });
+        const parsed0 = await planner.parseObjective({ objectiveText: objective, appName: T.name });
+        const decider = extra.noDecider ? undefined : (createDecider(await fetchDecisionStatus(), "auto") ?? undefined);
+        const { parsed, decisions }: { parsed: ParsedObjective; decisions: PlanDecisions } = await decidePlan(decider, parsed0, states, { objective, appName: T.name });
         const workflow = await planner.inferWorkflow({ parsed, states, graph, startUrl: T.baseUrl });
+        annotatePlanDecisions(graph, decisions, decider?.name);
         (api as Record<string, unknown>).parsed = parsed;
         (api as Record<string, unknown>).workflow = workflow;
-        return { parsed, workflow };
+        return { parsed, workflow, decisions };
       },
       ledger: [] as LedgerEntry[],
       async act(context: Record<string, string> = contextFor(T), approve = true, extra: { routineOnly?: boolean; useTrust?: boolean; onlySteps?: string[]; workflowOverride?: Workflow; noDecider?: boolean } = {}) {

@@ -1,6 +1,8 @@
 "use client";
 import * as React from "react";
 import { useSynforma } from "@/lib/synforma/store";
+import type { RemoteDecider } from "@/lib/synforma/decisions";
+import { annotatePlanDecisions, decidePlan, summarizePlanDecisions } from "@/lib/synforma/decisions/planning";
 import { explore, type DiscoveredState } from "@/lib/synforma/engine/explorer";
 import { createPlanner, fetchPlannerStatus, plannerVendor, resolvePlannerKind } from "@/lib/synforma/planner";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
@@ -33,10 +35,12 @@ interface Options {
   plannerStatus: PlannerStatus | null;
   setPhase: (id: PhaseId) => void;
   setContext: (ctx: Record<string, string>) => void;
+  /** Decision model for discovery (menu items) and planning (mappings, judgment); null → rules only. */
+  decider: RemoteDecider | null;
 }
 
 /** Explorer run with live graph updates, planning and re-planning, and the discovery log. */
-export function useDiscovery({ connection, programId, plannerStatus, setPhase, setContext, target }: Options): DiscoveryApi {
+export function useDiscovery({ connection, programId, plannerStatus, setPhase, setContext, target, decider }: Options): DiscoveryApi {
   const { getDriver, driverLogSinkRef, abortRef, hideOverlays } = connection;
   const graphTimer = React.useRef<number | null>(null);
   const pendingGraph = React.useRef<WorkGraph | null>(null);
@@ -59,8 +63,14 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
       setDiscovery((d) => ({ ...d, status: "planning", error: null }));
       try {
         const planner = createPlanner(kind);
-        const parsed = await planner.parseObjective({ objectiveText: prog.objectiveText, appName: target.name });
+        const parsed0 = await planner.parseObjective({ objectiveText: prog.objectiveText, appName: target.name });
+        // Planning decisions: where the rules are weak, the decision model places requirements and flags judgment, each with its probability.
+        const { parsed, decisions } = await decidePlan(decider, parsed0, states, { objective: prog.objectiveText, appName: target.name });
+        if (decider) pushDiscoveryLog(decisions.asked ? "decision" : "info", summarizePlanDecisions(decisions, decider.name));
         const inferred = await planner.inferWorkflow({ parsed, states, graph, startUrl: target.baseUrl });
+        annotatePlanDecisions(graph, decisions, decider?.name);
+        const placed = decisions.mappings.filter((m) => m.accepted).length;
+        const flagged = decisions.judgment.filter((j) => j.applied).length;
         const fallback = kind !== "heuristic" ? ((planner as { lastError?: string | null }).lastError ?? null) : null;
         const effectiveKind: PlannerKind = fallback ? "heuristic" : kind;
         const workflow = versionWorkflow(inferred, prog.workflow, effectiveKind, replanned);
@@ -73,18 +83,18 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
           actor: "synforma",
           action: "Program understood",
           programId: prog.id,
-          detail: `${effectiveKind} planner · ${mapped}/${fieldReqs.length} requirements mapped · ${workflow.steps.length} steps${fallback ? ` · ${plannerVendor(kind)} unavailable (${fallback}), heuristic fallback` : ""}`,
+          detail: `${effectiveKind} planner · ${mapped}/${fieldReqs.length} requirements mapped · ${workflow.steps.length} steps${fallback ? ` · ${plannerVendor(kind)} unavailable (${fallback}), heuristic fallback` : ""}${decisions.asked ? ` · ${decider?.name ?? "decision model"}: ${placed} placed, ${flagged} flagged for judgment (${decisions.asked} questions)` : ""}`,
         });
         setLiveGraph(cloneGraph(graph));
         pushDiscoveryLog("done", `${effectiveKind} planner mapped ${mapped}/${fieldReqs.length} requirements into ${workflow.steps.length} steps (workflow v${workflow.version})${fallback ? ` (${plannerVendor(kind)} unavailable: ${fallback})` : ""}`);
-        setDiscovery((d) => ({ ...d, status: "done", planned: { mapped, total: fieldReqs.length, steps: workflow.steps.length } }));
+        setDiscovery((d) => ({ ...d, status: "done", planned: { mapped, total: fieldReqs.length, steps: workflow.steps.length, decided: placed, flagged } }));
         setPhase("understand");
       } catch (e) {
         setDiscovery((d) => ({ ...d, status: "error", error: `Planning failed: ${errorMessage(e)}` }));
         patchProgram(prog.id, { status: "draft" });
       }
     },
-    [pushDiscoveryLog, setPhase, target],
+    [decider, pushDiscoveryLog, setPhase, target],
   );
 
   const discover = React.useCallback(
@@ -97,6 +107,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
       const graph = createGraph(prog.graphId);
       const startedAt = Date.now();
       setDiscovery({ status: "running", log: [], counters: EMPTY_COUNTERS, stats: null, error: null, startedAt, planned: null });
+      decider?.reset();
       setLiveGraph(null);
       setPhase("discover");
       patchProgram(prog.id, { status: "discovering", parsed: undefined, workflow: undefined, discovery: { startedAt, screens: 0, actions: 0, fields: 0, objects: 0, statesVisited: 0 } });
@@ -120,6 +131,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
           graph,
           limits: { maxStates: 40, timeBudgetMs: 120_000 },
           signal: ac.signal,
+          decider: decider ?? undefined,
           onEvent: (e) => {
             if (e.type === "log") pushDiscoveryLog(e.level === "warn" ? "warn" : "info", e.message);
             else if (e.type === "state") {
@@ -149,11 +161,11 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
           actor: "synforma",
           action: stats.stoppedBy === "aborted" ? "Discovery stopped by operator" : "Discovery completed",
           programId: prog.id,
-          detail: `${stats.statesVisited} states · ${stats.screens} screens · ${stats.fields} fields · ${Math.round(stats.durationMs / 1000)}s · ${stats.stoppedBy}`,
+          detail: `${stats.statesVisited} states · ${stats.screens} screens · ${stats.fields} fields · ${Math.round(stats.durationMs / 1000)}s · ${stats.stoppedBy}${stats.decisions.asked ? ` · ${decider?.name ?? "decision model"} assessed ${stats.decisions.asked} menu items, ${stats.decisions.commits} marked as commits` : ""}`,
         });
         setDiscovery((d) => ({ ...d, stats, counters: { screens: stats.screens, actions: stats.actions, fields: stats.fields, objects: stats.objects, states: stats.statesVisited } }));
         setLiveGraph(cloneGraph(graph));
-        pushDiscoveryLog("done", `Discovery ${stats.stoppedBy === "aborted" ? "stopped" : "finished"}: ${stats.statesVisited} states in ${Math.round(stats.durationMs / 1000)}s`);
+        pushDiscoveryLog("done", `Discovery ${stats.stoppedBy === "aborted" ? "stopped" : "finished"}: ${stats.statesVisited} states in ${Math.round(stats.durationMs / 1000)}s${stats.decisions.asked ? ` · ${decider?.name ?? "decision model"} assessed ${stats.decisions.asked} menu item${stats.decisions.asked === 1 ? "" : "s"}, ${stats.decisions.commits} marked as commits` : ""}`);
         if (states.length === 0) {
           setDiscovery((d) => ({ ...d, status: "error", error: "No application state could be read. Is the sandbox reachable?" }));
           patchProgram(prog.id, { status: "draft" });
@@ -167,7 +179,7 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
         patchProgram(prog.id, { status: "draft" });
       }
     },
-    [abortRef, driverLogSinkRef, getDriver, hideOverlays, plan, pushDiscoveryLog, setPhase, target],
+    [abortRef, decider, driverLogSinkRef, getDriver, hideOverlays, plan, pushDiscoveryLog, setPhase, target],
   );
 
   const start = React.useCallback(
