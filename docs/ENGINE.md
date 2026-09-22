@@ -89,7 +89,7 @@ Output: `DiscoveredState[]` (page model + replayable path + revealed groups) and
   a `field` requirement even when the artifact is called a policy ("A policy that allows authenticated
   users to read their own rows"); %/sustained/adoption mark an `outcome`.
 
-A language-model planner (Claude or Gemini through `RemotePlanner`) does the same task with a model
+A language-model planner (Claude, OpenAI, Gemini or Grok through `RemotePlanner`) does the same task with a model
 and must return the same Zod-validated shape. Heuristic expectations are kept when the model omits
 them; keywords are always recomputed.
 
@@ -427,7 +427,7 @@ const status = await fetchPlannerStatus();               // { configured, provid
 const kind = resolvePlannerKind(settings.plannerPreference, status); // "heuristic" | "claude" | "gemini"
 const planner = createPlanner(kind);                     // HeuristicPlanner, or RemotePlanner(kind)
 configuredLlmKind(status);                               // "claude" | "gemini" | null
-plannerVendor(kind);                                     // "Claude" | "Gemini" | "Heuristic"
+plannerVendor(kind);                                     // "Claude" | "OpenAI" | "Gemini" | "Grok" | "Heuristic"
 plannerLabel(kind, status);                              // "Claude planner · claude-opus-5", "Heuristic planner"
 
 const parsed = await planner.parseObjective({ objectiveText, appName });
@@ -451,9 +451,12 @@ scores ≥ 0.5 on its own. `verify/remote-planner.spec.ts` covers these rules wi
 
 ### Server side — `@/lib/synforma/planner/server` and `app/api/planner` (never import from client code)
 
-`getProvider()` reads `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` (and `ANTHROPIC_MODEL`, `GEMINI_MODEL`,
-`PLANNER_PROVIDER`) and returns an `LLMProvider { name, model, generateJSON({ system, user, schema,
-signal }) }` or null; Claude first when both keys are set. `describeProvider()` → `{ configured,
+`getProvider()` reads `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` (and the
+`*_MODEL` overrides, `OPENAI_BASE_URL`, `XAI_BASE_URL`, `PLANNER_PROVIDER`) and returns an `LLMProvider {
+name, model, generateJSON({ system, user, schema, signal }) }` or null; the first of Claude, OpenAI, Gemini,
+Grok when several keys are set. `OpenAICompatibleProvider` serves OpenAI and Grok alike (chat completions,
+`response_format: json_schema` with the structure-only schema, low reasoning effort on gpt-5 / o-series /
+reasoning Grok models, temperature 0.2 otherwise). `describeProvider()` → `{ configured,
 provider, model? }`, the only thing `/api/planner/status` reveals. `ProviderError(kind: transport | auth
 | output | aborted)`; messages never contain the key (`redact`). `AnthropicProvider` sends the task's
 JSON Schema through `output_config.format` (structure-only copy from `toOutputSchema`; Zod enforces value

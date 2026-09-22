@@ -38,8 +38,8 @@ plugin `@netlify/plugin-nextjs`, Node 20. No base directory: the app is the whol
 
 1. **Add new project → Import from an existing project → GitHub**, pick `goinghamm9/synforma`,
    branch `main`. Build settings are read from `netlify.toml`; leave them as detected.
-2. Optional: under **Site configuration → Environment variables** set `ANTHROPIC_API_KEY` (Claude) or
-   `GEMINI_API_KEY` (Gemini). Redeploy. `/api/planner/status` then reports the provider and model; the
+2. Optional: under **Site configuration → Environment variables** set `ANTHROPIC_API_KEY` (Claude),
+   `OPENAI_API_KEY` (OpenAI), `GEMINI_API_KEY` (Gemini) or `XAI_API_KEY` (Grok). Redeploy. `/api/planner/status` then reports the provider and model; the
    Settings page shows it. Without a key the heuristic planner runs and the UI says so.
 
 ### GitHub Pages (static export)
@@ -79,9 +79,15 @@ lists them; copy it to `.env.local` for local development and restart the dev se
 |---|---|
 | `ANTHROPIC_API_KEY` | Enables the Claude provider. Preferred when both keys are set. |
 | `ANTHROPIC_MODEL` | Claude model id; default `claude-opus-5`, run at low effort (extraction and mapping tasks). |
+| `OPENAI_API_KEY` | Enables the OpenAI provider (chat completions with a JSON-schema response format). |
+| `OPENAI_MODEL` | OpenAI model id; default `gpt-5-mini`. A gpt-5 or o-series model runs at low reasoning effort; others at temperature 0.2. |
+| `OPENAI_BASE_URL` | API root for an OpenAI-compatible gateway; default `https://api.openai.com/v1`. |
 | `GEMINI_API_KEY` | Enables the Gemini provider. |
 | `GEMINI_MODEL` | Gemini model id; default `gemini-2.5-flash`. |
-| `PLANNER_PROVIDER` | `claude` or `gemini`: pin one vendor when both keys are present. |
+| `XAI_API_KEY` | Enables the Grok provider through xAI's OpenAI-compatible API (`GROK_API_KEY` is accepted too). |
+| `XAI_MODEL` | Grok model id; default `grok-4-fast-non-reasoning` (`GROK_MODEL` is accepted too). |
+| `XAI_BASE_URL` | API root; default `https://api.x.ai/v1`. |
+| `PLANNER_PROVIDER` | `claude`, `openai`, `gemini` or `grok`: pin one vendor when several keys are present; otherwise the first configured in that order. |
 | `SYNFORMA_STATIC` | `1` builds a static export without API routes (set by `npm run build:static`). |
 | `NEXT_PUBLIC_BASE_PATH` | Sub-path for a static deployment (e.g. `/synforma`); public by design, contains no secret. |
 

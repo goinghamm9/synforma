@@ -26,7 +26,7 @@ export async function fetchPlannerStatus(): Promise<PlannerStatus> {
 /** The language-model kind the server reports, or null when none is configured. */
 export function configuredLlmKind(status: PlannerStatus | null | undefined): Exclude<PlannerKind, "heuristic"> | null {
   if (!status?.configured) return null;
-  return status.provider === "claude" || status.provider === "gemini" ? status.provider : null;
+  return status.provider === "claude" || status.provider === "openai" || status.provider === "gemini" || status.provider === "grok" ? status.provider : null;
 }
 
 export function resolvePlannerKind(pref: SynformaSettings["plannerPreference"], status: PlannerStatus): PlannerKind {
@@ -38,9 +38,9 @@ export function createPlanner(kind: PlannerKind): Planner {
   return kind === "heuristic" ? new HeuristicPlanner() : new RemotePlanner(kind);
 }
 
-/** Vendor name for prose ("Claude", "Gemini", "Heuristic"). */
-export function plannerVendor(kind: PlannerKind | null | undefined): "Claude" | "Gemini" | "Heuristic" {
-  return kind === "claude" ? "Claude" : kind === "gemini" ? "Gemini" : "Heuristic";
+/** Vendor name for prose ("Claude", "OpenAI", "Gemini", "Grok", "Heuristic"). */
+export function plannerVendor(kind: PlannerKind | null | undefined): "Claude" | "OpenAI" | "Gemini" | "Grok" | "Heuristic" {
+  return kind === "claude" ? "Claude" : kind === "openai" ? "OpenAI" : kind === "gemini" ? "Gemini" : kind === "grok" ? "Grok" : "Heuristic";
 }
 
 /** Honest planner label ("Claude planner · claude-opus-5", "Heuristic planner"). The model is shown only when the status matches the kind. */

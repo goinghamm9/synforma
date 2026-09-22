@@ -50,10 +50,14 @@ a language model parse objectives, map requirements to fields, name barriers and
 ```bash
 cp .env.example .env.local
 # set ANTHROPIC_API_KEY  (Claude; default model claude-opus-5, override with ANTHROPIC_MODEL)
+# or  OPENAI_API_KEY     (OpenAI; default model gpt-5-mini, override with OPENAI_MODEL)
 # or  GEMINI_API_KEY     (Gemini; default model gemini-2.5-flash, override with GEMINI_MODEL)
+# or  XAI_API_KEY        (Grok through xAI's API; default model grok-4-fast-non-reasoning, override with XAI_MODEL)
 ```
 
-Claude is preferred when both keys are set; `PLANNER_PROVIDER=claude|gemini` pins one. Keys are read
+When several keys are set the first of Claude, OpenAI, Gemini, Grok wins; `PLANNER_PROVIDER=claude|openai|gemini|grok`
+pins one. OpenAI and Grok share one provider (OpenAI-compatible chat completions with a JSON-schema response
+format; `OPENAI_BASE_URL` / `XAI_BASE_URL` point it at a compatible gateway). Keys are read
 only on the server (`app/api/planner`). The browser sees `{ configured, provider, model }` from
 `/api/planner/status` and nothing else. Every reply is validated against fixed Zod schemas; a refused or
 malformed reply makes the route answer 502 and the client falls back to the heuristic planner, as does

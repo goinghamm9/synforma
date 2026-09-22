@@ -1,5 +1,6 @@
 import { AnthropicProvider, DEFAULT_ANTHROPIC_MODEL } from "./anthropic-provider";
 import { DEFAULT_GEMINI_MODEL, GeminiProvider } from "./gemini-provider";
+import { DEFAULT_OPENAI_MODEL, DEFAULT_XAI_MODEL, OPENAI_API_BASE, OpenAICompatibleProvider, XAI_API_BASE } from "./openai-compatible-provider";
 import type { LLMProvider } from "./provider";
 
 export type { LLMProvider, GenerateJSONInput } from "./provider";
@@ -8,9 +9,10 @@ export { ProviderError, redact } from "./provider";
 /**
  * Provider registry. Server only.
  *
- * Two providers exist: Claude (ANTHROPIC_API_KEY, preferred when both keys are
- * set) and Gemini (GEMINI_API_KEY). PLANNER_PROVIDER=claude|gemini pins one.
- * To add another:
+ * Four providers exist, tried in this order when several keys are set: Claude
+ * (ANTHROPIC_API_KEY), OpenAI (OPENAI_API_KEY), Gemini (GEMINI_API_KEY) and Grok
+ * (XAI_API_KEY or GROK_API_KEY, through xAI's OpenAI-compatible API).
+ * PLANNER_PROVIDER=claude|openai|gemini|grok pins one. To add another:
  *   1. Create `./<vendor>-provider.ts` implementing `LLMProvider` from
  *      ./provider.ts. `generateJSON` receives a standard JSON Schema; adapt it
  *      to the vendor's structured-output mechanism there (Claude: output_config
@@ -49,11 +51,29 @@ export function getProvider(): LLMProvider | null {
     });
   }
 
+  const openaiKey = (process.env.OPENAI_API_KEY ?? "").trim();
+  if (openaiKey && (!preferred || preferred === "openai")) {
+    candidates.push(() => {
+      const model = (process.env.OPENAI_MODEL ?? "").trim() || DEFAULT_OPENAI_MODEL;
+      const baseUrl = (process.env.OPENAI_BASE_URL ?? "").trim() || OPENAI_API_BASE;
+      return cachedProvider("openai", openaiKey, `${model}@${baseUrl}`, () => new OpenAICompatibleProvider({ name: "openai", vendor: "OpenAI", apiKey: openaiKey, model, baseUrl }));
+    });
+  }
+
   const geminiKey = (process.env.GEMINI_API_KEY ?? "").trim();
   if (geminiKey && (!preferred || preferred === "gemini")) {
     candidates.push(() => {
       const model = (process.env.GEMINI_MODEL ?? "").trim() || DEFAULT_GEMINI_MODEL;
       return cachedProvider("gemini", geminiKey, model, () => new GeminiProvider(geminiKey, model));
+    });
+  }
+
+  const xaiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY || "").trim();
+  if (xaiKey && (!preferred || preferred === "grok" || preferred === "xai")) {
+    candidates.push(() => {
+      const model = (process.env.XAI_MODEL || process.env.GROK_MODEL || "").trim() || DEFAULT_XAI_MODEL;
+      const baseUrl = (process.env.XAI_BASE_URL ?? "").trim() || XAI_API_BASE;
+      return cachedProvider("grok", xaiKey, `${model}@${baseUrl}`, () => new OpenAICompatibleProvider({ name: "grok", vendor: "xAI", apiKey: xaiKey, model, baseUrl }));
     });
   }
 

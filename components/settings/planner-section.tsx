@@ -11,9 +11,9 @@ import { FieldRow, SettingsSection, StatusLine } from "./section";
 type Preference = SynformaSettings["plannerPreference"];
 
 const OPTIONS: { value: Preference; label: string; hint: string }[] = [
-  { value: "auto", label: "Automatic", hint: "Use the language model (Claude or Gemini) when the server has a key; otherwise the heuristic planner." },
+  { value: "auto", label: "Automatic", hint: "Use the language model (Claude, OpenAI, Gemini or Grok) when the server has a key; otherwise the heuristic planner." },
   { value: "heuristic", label: "Heuristic only", hint: "Deterministic and lexical. Runs without any key and behaves the same every time." },
-  { value: "llm", label: "Language model", hint: "Requires ANTHROPIC_API_KEY (Claude) or GEMINI_API_KEY (Gemini) on the server. Falls back to the heuristic planner, with a warning here, when neither is set." },
+  { value: "llm", label: "Language model", hint: "Requires ANTHROPIC_API_KEY (Claude), OPENAI_API_KEY (OpenAI), GEMINI_API_KEY (Gemini) or XAI_API_KEY (Grok) on the server. Falls back to the heuristic planner, with a warning here, when none is set." },
 ];
 
 type Fetch = { state: "loading" } | { state: "ok"; status: PlannerStatus } | { state: "error"; message: string };
@@ -87,11 +87,13 @@ export function PlannerSection() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="muted">Heuristic planner</Badge>
               <span className="text-sm text-graphite">
-                Set <code className="mono-data text-[12px]">ANTHROPIC_API_KEY</code> (Claude) or <code className="mono-data text-[12px]">GEMINI_API_KEY</code> (Gemini) to enable the language-model planner.
+                Set <code className="mono-data text-[12px]">ANTHROPIC_API_KEY</code> (Claude), <code className="mono-data text-[12px]">OPENAI_API_KEY</code> (OpenAI), <code className="mono-data text-[12px]">GEMINI_API_KEY</code> (Gemini) or{" "}
+                <code className="mono-data text-[12px]">XAI_API_KEY</code> (Grok) to enable the language-model planner.
               </span>
             </div>
             <StatusLine>
-              Optional: <code className="mono-data text-[12px]">ANTHROPIC_MODEL</code> / <code className="mono-data text-[12px]">GEMINI_MODEL</code> select the model (defaults claude-opus-5 and gemini-2.5-flash); <code className="mono-data text-[12px]">PLANNER_PROVIDER</code> pins a vendor when both keys are set. Restart the server after changing the environment.
+              Optional: <code className="mono-data text-[12px]">ANTHROPIC_MODEL</code>, <code className="mono-data text-[12px]">OPENAI_MODEL</code>, <code className="mono-data text-[12px]">GEMINI_MODEL</code> and <code className="mono-data text-[12px]">XAI_MODEL</code> select the model (defaults claude-opus-5, gpt-5-mini, gemini-2.5-flash and grok-4-fast-non-reasoning);{" "}
+              <code className="mono-data text-[12px]">PLANNER_PROVIDER</code> pins a vendor when several keys are set. Restart the server after changing the environment.
             </StatusLine>
           </div>
         )}
