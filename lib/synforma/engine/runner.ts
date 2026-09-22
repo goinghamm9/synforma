@@ -1,5 +1,5 @@
 import type { IframeDriver } from "../interaction/driver";
-import { ground } from "../interaction/grounding";
+import { ground, type GroundingCandidate } from "../interaction/grounding";
 import { generalizeRoute } from "../interaction/snapshot";
 import { similarity } from "../interaction/text";
 import { anchorMatches, CONSENT_RE, resolveValue } from "../planner/heuristic";
@@ -178,7 +178,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       }
       // Resolve templated values against the live field.
       if (action.kind === "type" || action.kind === "select" || action.kind === "check") {
-        let field = findField(page, action, caps);
+        let field = findField(page, action, caps, requirements);
         if (!field && caps.expand && caps.synonyms) {
           // A vendor update may have moved the field behind a tab or a disclosure: open the one whose name matches the field or the step.
           const byName = revealCandidate(page, [action.targetName ?? "", step.title]);
@@ -188,7 +188,7 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
             const opened = await perform({ kind: "click", target: opener.key, targetName: opener.name, targetRole: opener.role, targetCommit: false, label: `Open ${opener.role === "tab" ? "tab" : "section"} ${opener.name}` }, step);
             if (!opened.ok || !opened.page) continue;
             page = opened.page;
-            field = findField(page, action, caps);
+            field = findField(page, action, caps, requirements);
             if (field) {
               hooks.onEvent("action_regrounded", { from: action.targetName, to: field.key, toName: field.name, change: { type: "ui_element_moved", screen: step.route ?? null, affectedStep: step.id, detectedAt: Date.now(), risk: "low", via: opener.name } }, step.id, `Found "${action.targetName}" behind "${opener.name}"`);
               break;
@@ -337,12 +337,16 @@ export async function runWorkflow(opts: RunnerOptions): Promise<RunnerResult> {
       await sleep(40);
     }
     // A form that jumped back to an earlier screen (a late validation) leaves the next step on the wrong screen: move forward until the step's own screen is back.
+    // Only a screen that belongs to a known step before the target (a jump back, or a step the policy skipped) is moved through; a screen that matches no known step is a renamed heading and is left alone.
     if (!step.commit && step.anchor?.heading) {
       for (let i = 0; i < 6; i++) {
         const now = driver.snapshot().page;
         const nextStep = steps[steps.indexOf(step) + 1];
         const target = nextStep?.anchor?.heading;
         if (!target || anchorMatches({ heading: target }, now.url, now.heading, now.headings, now.dialogs)) break;
+        // A known screen before the target (this step's own, an earlier one, or one the policy skipped) is moved through.
+        const onKnownEarlierScreen = workflow.steps.some((s) => s.route === step.route && s.anchor?.heading && (!nextStep || s.index < nextStep.index) && anchorMatches({ heading: s.anchor.heading }, now.url, now.heading, now.headings, now.dialogs));
+        if (!onKnownEarlierScreen) break;
         const fwd = now.actions.find((a) => a.role === "button" && WIZARD_NAV_RE.test(a.name) && !a.disabled);
         if (!fwd) break;
         const r = await perform({ kind: "click", target: fwd.key, targetName: fwd.name, targetRole: "button", targetCommit: false, label: `Move forward (${fwd.name})` }, step);
@@ -421,7 +425,7 @@ function revealCandidate(page: PageModel, hints: string[]): SemanticElement | nu
   return best?.el ?? null;
 }
 
-function findField(page: PageModel, action: Action, caps: RunCapabilities): SemanticElement | null {
+function findField(page: PageModel, action: Action, caps: RunCapabilities, requirements: Requirement[] = []): SemanticElement | null {
   if (action.target) {
     const exact = page.fields.find((f) => f.key === action.target);
     if (exact) return exact;
@@ -431,8 +435,25 @@ function findField(page: PageModel, action: Action, caps: RunCapabilities): Sema
     const plain = page.fields.find((f) => f.name.toLowerCase() === action.targetName!.toLowerCase());
     return plain ?? null;
   }
-  const hit = ground({ name: action.targetName, role: action.targetRole, kind: "field", hints: action.value && !action.value.startsWith("{{") ? [action.value] : undefined }, page);
-  return hit?.element ?? null;
+  // The requirement's own wording is evidence too: a renamed field keeps options or help text that still say what it holds.
+  const reqText = requirements.find((r) => r.id === requirementIdOfAction(action))?.text;
+  const hints = [...(action.value && !action.value.startsWith("{{") ? [action.value] : []), ...(reqText ? [reqText] : [])];
+  const hit = ground({ name: action.targetName, role: action.targetRole, kind: "field", hints: hints.length ? hints : undefined }, page);
+  if (!hit || !recognisablyTheSameField(hit)) return null;
+  return hit.element;
+}
+
+/**
+ * A field the vendor renamed still resembles its old self: a similar name, the same acronym, or options, help text
+ * and requirement wording that overlap. A candidate that only shares a generic word with the old name (and a
+ * role) is another field; treating it as "not here" lets the fill defer to a later screen instead of landing wrong.
+ */
+function recognisablyTheSameField(hit: GroundingCandidate): boolean {
+  return hit.reasons.some((reason) => {
+    if (reason === "exact semantic key" || reason === "same name" || reason === "acronym of the old name" || reason === "hint overlap" || reason === "description/options overlap") return true;
+    const similar = /^name similar \((\d+)%\)/.exec(reason);
+    return Boolean(similar && Number(similar[1]) >= 50);
+  });
 }
 
 async function repairValidation(
@@ -453,10 +474,13 @@ async function repairValidation(
     let value = "";
     const alertText = page.alerts.join(" ");
     if (/already exists|already taken|already in use|must be unique|is taken|duplicate name/i.test(alertText) && f.value) {
-      // A name the application already has: keep the person's wording, add a counter.
-      const m = /^(.*?)(?:[_ -](\d+))?$/.exec(f.value);
+      // A name the application already has: keep the person's wording, add a counter in the name's own style
+      // (snake_case keeps underscores, spaced names get a space, a single word gets the digits appended).
+      const m = /^(.*?)(?:[_ -]?(\d+))?$/.exec(f.value);
+      const base = m ? m[1] : f.value;
       const n = m && m[2] ? Number(m[2]) + 1 : 2;
-      value = /[_]/.test(f.value) || !/\s/.test(f.value) ? `${m ? m[1] : f.value}_${n}` : `${m ? m[1] : f.value} ${n}`;
+      const separator = /_/.test(base) ? "_" : /\s/.test(base) ? " " : "";
+      value = `${base}${separator}${n}`;
     } else if (/yyyy-mm-dd|date/i.test(alertText) || /date/i.test(f.name)) {
       const d = new Date();
       d.setDate(d.getDate() + 7);
@@ -498,6 +522,11 @@ export function verifyRequirements(page: PageModel, requirements: Requirement[])
       if (!dateMatch) continue;
       const days = (new Date(dateMatch[1]).getTime() - Date.now()) / 86_400_000;
       if (days > r.expectation.withinDays || days < -1) continue;
+    }
+    if (r.expectation?.atMostDays) {
+      // A capped duration must state a number of days at or under the cap; "Indefinite" or a bare label does not count.
+      const daysMatch = /(\d+)\s*days?\b/i.exec(value);
+      if (!daysMatch || Number(daysMatch[1]) > r.expectation.atMostDays) continue;
     }
     met.push(r.id);
   }

@@ -117,6 +117,7 @@ export function parseRequirements(text: string): Requirement[] {
     if (quoted.length) acceptedValues = [...(acceptedValues ?? []), ...quoted];
     const within = /within\s+(\d+)\s+days?/i.exec(text);
     const atLeast = /at least\s+(\d+)\s+days?/i.exec(text);
+    const atMost = /(\d+)\s+days?\s+or\s+(?:less|fewer)/i.exec(text) ?? /(?:at most|no more than|up to|a maximum of|maximum)\s+(\d+)\s+days?/i.exec(text);
     const fieldHint = text.replace(/\([^)]*\)/g, "").replace(/\b(a|an|the|named|at least one|recorded|scheduled|set|must|be|is|has|have|or|of)\b/gi, " ").replace(/\s+/g, " ").trim();
     // A constraint is phrased as a prohibition. A list item that names something to create ("A policy that allows …")
     // is a field requirement even when the artifact is called a policy.
@@ -133,6 +134,7 @@ export function parseRequirements(text: string): Requirement[] {
         rejectedValues,
         withinDays: within ? Number(within[1]) : undefined,
         atLeastDays: atLeast ? Number(atLeast[1]) : undefined,
+        atMostDays: atMost ? Number(atMost[1]) : undefined,
       },
     };
   });
@@ -732,6 +734,15 @@ export function resolveValue(
       const opts = field.options.filter((o) => o && !/^(select|choose|--)/i.test(o) && !rejected.includes(o.toLowerCase()));
       const hit = opts.find((o) => accepted.some((a) => a.toLowerCase() === o.toLowerCase()));
       if (hit) return hit;
+      // An option the requirement names outright ("30 days", "Approved") is the value it asks for.
+      const named = opts.find((o) => o.length >= 4 && new RegExp(`\\b${o.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(r.text));
+      if (named) return named;
+      // A capped duration: the longest option within the cap.
+      if (r.expectation?.atMostDays) {
+        const cap = r.expectation.atMostDays;
+        const withDays = opts.map((o) => ({ o, days: Number(/(\d+)\s*days?/i.exec(o)?.[1] ?? NaN) })).filter((x) => !Number.isNaN(x.days) && x.days <= cap);
+        if (withDays.length) return withDays.sort((a, b) => b.days - a.days)[0].o;
+      }
       // Prefer an option that looks like a person with a decision-making title when the requirement is about people.
       if (/decision|buyer|contact|stakeholder/i.test(r.text)) {
         const senior = opts.find((o) => /\b(vp|vice president|director|chief|head|cfo|ceo|coo|cto|owner|president)\b/i.test(o));

@@ -19,6 +19,7 @@ export const RequirementSchema = z.object({
       rejectedValues: z.array(z.string()).optional(),
       withinDays: z.number().optional(),
       atLeastDays: z.number().optional(),
+      atMostDays: z.number().optional(),
     })
     .optional(),
 });

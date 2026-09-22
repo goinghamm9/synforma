@@ -7,7 +7,7 @@
  */
 import { acronymsIn, collapseAcronyms, similarity } from "../lib/synforma/interaction/text";
 import { ground } from "../lib/synforma/interaction/grounding";
-import { parseRequirements } from "../lib/synforma/planner/heuristic";
+import { parseRequirements, resolveValue } from "../lib/synforma/planner/heuristic";
 import type { PageModel, SemanticElement } from "../lib/synforma/types";
 
 let failed = 0;
@@ -49,6 +49,20 @@ check("parseRequirements: five list items", reqs.length === 5, String(reqs.lengt
 check("a policy named as an artifact to create is a field requirement", reqs[2]?.kind === "field", reqs[2]?.kind);
 check("a prohibition is a policy constraint", reqs[3]?.kind === "policy", reqs[3]?.kind);
 check("the other items stay field requirements", reqs.filter((r) => r.kind === "field").length === 4);
+
+// Capped durations and options named in the objective
+const capped = parseRequirements(`A correctly created project must have:
+1. Data retention of 30 days or less
+2. A review cycle of no more than 14 days
+3. A next step scheduled within 14 days`);
+check("'30 days or less' parses as a cap of 30 days", capped[0]?.expectation?.atMostDays === 30, String(capped[0]?.expectation?.atMostDays));
+check("'no more than 14 days' parses as a cap of 14 days", capped[1]?.expectation?.atMostDays === 14, String(capped[1]?.expectation?.atMostDays));
+check("'within 14 days' stays a date horizon, not a cap", capped[2]?.expectation?.withinDays === 14 && capped[2]?.expectation?.atMostDays === undefined);
+const retention = el("f:ret", "Data retention", "combobox", { options: ["7 days", "30 days", "90 days", "Indefinite"] });
+const action = { kind: "select", target: "f:ret", targetName: "Data retention", value: "{{req:r1}}", label: "Data retention ← requirement 1" } as const;
+check("the option the objective names is the value chosen", resolveValue(action, capped, {}, retention) === "30 days", resolveValue(action, capped, {}, retention));
+const noNamed = parseRequirements("1. Data retention of at most 60 days");
+check("without a named option, the longest option within the cap is chosen", resolveValue({ ...action, value: "{{req:r1}}" }, noNamed, {}, retention) === "30 days", resolveValue({ ...action, value: "{{req:r1}}" }, noNamed, {}, retention));
 
 console.log(failed ? `\n${failed} check(s) failed` : "\nAll checks passed");
 process.exit(failed ? 1 : 0);

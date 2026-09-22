@@ -248,6 +248,8 @@ export interface Requirement {
     withinDays?: number;
     /** Date must be at least N days from now. */
     atLeastDays?: number;
+    /** A duration that must be at most N days ("30 days or less", "no more than 90 days"). */
+    atMostDays?: number;
   };
 }
 

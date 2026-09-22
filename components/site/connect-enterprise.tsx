@@ -15,6 +15,7 @@ const CONNECTORS: Connector[] = [
   { name: "Ledgerline Billing", kind: "Demo application · billing-dashboard replica", status: "connected", href: "/demo?target=billing" },
   { name: "Atlas ERP", kind: "Demo application · enterprise-ERP replica", status: "connected", href: "/demo?target=erp" },
   { name: "Nimbus Data Console", kind: "Demo application · developer-console replica", status: "connected", href: "/demo?target=data" },
+  { name: "Lumen Workspace", kind: "Demo application · AI-assistant workspace replica", status: "connected", href: "/demo?target=assistant" },
   { name: "Microsoft 365", kind: "Productivity suite", status: "roadmap" },
   { name: "Google Workspace", kind: "Productivity suite", status: "roadmap" },
   { name: "Salesforce", kind: "CRM", status: "roadmap" },

@@ -18,10 +18,16 @@ never automated, conflicting sources stop autonomy, no fabricated statistics, ci
 
 ## Demo library — this release
 
-Four target applications (Meridian CRM, Ledgerline Billing, Nimbus Data Console, Atlas ERP), a target
-picker and presenter notes in Mission Control, a demo-applications gallery at `/sandbox`, and
-`verify/targets.spec.js` as the zero-configuration regression across all of them. All four run 5/5 on
-both UI versions. The data console joined last: its policy requirement was being read as a constraint
+Five target applications (Meridian CRM, Ledgerline Billing, Nimbus Data Console, Atlas ERP, Lumen
+Workspace), a target picker and presenter notes in Mission Control, a demo-applications gallery at
+`/sandbox`, and `verify/targets.spec.js` as the zero-configuration regression across all of them. All
+five run 5/5 on both UI versions, and the spec exits non-zero otherwise. Lumen Workspace, a fictional
+AI-assistant workspace, is the demo for learning an AI-assistant system itself: its objective asks for
+approved instructions, a connected knowledge source, a capped data retention and a reviewer. Making its
+vendor-update run honest took three more generic engine rules: a fill whose field was renamed beyond
+recognition is deferred to a later screen instead of landing on a look-alike field, a capped duration
+("30 days or less") is parsed and verified as a threshold, and the wizard re-sync only moves forward
+when the live screen belongs to an earlier step. The data console joined last: its policy requirement was being read as a constraint
 because it contains the word "policy", the renamed "RLS protection" switch did not match "Row level
 security" on the outcome screen, and the vendor update moves the policy fields to a tab on the review
 step. The fixes are generic (requirement kind by prohibition wording, acronym-aware matching, fills
@@ -83,7 +89,7 @@ Not built yet. The same autonomy contract classes, ledger and rollback apply to 
 
 | Demo | Recommended shape | Why |
 |---|---|---|
-| Claude | Planner provider in the current product: objective parsing, field mapping, diagnosis and assistance wording through the server route, labelled in the UI | Shows the model improving understanding without owning structure, actions or citations; runs today with a key |
+| Claude | Two parts, both in the current product: the planner provider (objective parsing, field mapping, diagnosis and assistance wording through the server route, labelled in the UI, bounded by deadlines), and Lumen Workspace, a fictional AI-assistant workspace replica that Synforma teaches and drives like any other application | Shows the model improving understanding without owning structure, actions or citations, and shows adoption of an AI-assistant system itself, not just an LLM behind Synforma |
 | Stripe | Extension driver on the Stripe dashboard in test mode (Phase 3), then the Stripe API as an Act connector (Phase 4) | A real third-party UI with dialogs, menus and forms; test mode makes commits safe; the API path shows the same contract applied to calls |
 | Supabase | Extension driver on Supabase Studio (Phase 3), then the management API (Phase 4); the same Supabase project can host the Phase 2 backend | One vendor serves as target application and as backend, which keeps the demo honest about what is real |
 | SAP | Fiori-style sandbox replica for the UI story, labelled as such; SAP OData against the Business Accelerator Hub sandbox for the API story (Phase 4) | A real SAP tenant cannot be shown; the replica is declared a replica, and the OData sandbox is a genuine API surface |
