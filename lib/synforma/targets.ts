@@ -213,7 +213,7 @@ Requesters must not split orders to stay under approval limits. Success is every
 const ASSISTANT: TargetApp = {
   id: "assistant",
   name: "Lumen Workspace",
-  status: "preview",
+  status: "ready",
   category: "AI-assistant workspace",
   replicaNote: "Fictional replica of an enterprise AI-assistant workspace pattern; not affiliated with any vendor.",
   version: "2.3",

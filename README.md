@@ -84,10 +84,12 @@ closes menus it opened and replays a wizard's path instead of reloading it; the 
 terminal commit control, sets selects the objective names outright and ticks acknowledgement boxes on
 the commit screen; the runner finds fields a vendor update moved into a tab, skips a "Next" the new
 version no longer needs, never re-grounds forward navigation onto "Back", repairs duplicate names,
-re-synchronises with a wizard that jumped back and carries a fill forward when the vendor moved its
-field to a later screen of the same form; matching treats an abbreviation as the phrase whose initials
-it spells ("RLS protection" is "Row level security"); and a requirement that names an artifact to create
-("a policy that allows …") is a field requirement, not a constraint. `node verify/targets.spec.js` runs
+re-synchronises with a wizard that jumped back (and only then), carries a fill forward when the vendor
+moved its field to a later screen of the same form and refuses to drop it on a look-alike field, reads a
+capped duration ("30 days or less") and picks the option the objective names; matching treats an
+abbreviation as the phrase whose initials it spells ("RLS protection" is "Row level security"); and a
+requirement that names an artifact to create ("a policy that allows …") is a field requirement, not a
+constraint. `node verify/targets.spec.js` runs
 all five.
 
 ## Demo in five minutes

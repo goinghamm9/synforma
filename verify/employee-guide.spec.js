@@ -166,7 +166,12 @@ const stepState = (page, id) => attr(page, `step-${id}`, "data-state");
   if (dialogShown) await page.getByTestId("approve-commit").click();
   const completion = page.getByTestId("completion-card");
   await completion.waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
-  const stC = await readStore(page);
+  // The completion card follows the iframe reaching the outcome page; the commit run writes its audit a moment later, once the driver settles.
+  let stC = await readStore(page);
+  for (let i = 0; i < 20 && !stC.audit.some((a) => a.action === "get it done committed"); i++) {
+    await sleep(500);
+    stC = await readStore(page);
+  }
   const run = stC.runs[runId];
   check("approval commits: 'get it done committed' audit + approval_granted via get_it_done", stC.audit.some((a) => a.action === "get it done committed") && stC.events.some((e) => e.runId === runId && e.type === "approval_granted" && e.data?.via === "get_it_done"));
   check("run completes: completion card, run.outcome completed, run_completed event, proficiency updated", (await completion.count()) === 1 && run?.outcome === "completed" && stC.events.some((e) => e.runId === runId && e.type === "run_completed") && stC.events.some((e) => e.runId === runId && e.type === "proficiency_updated"), `outcome=${run?.outcome}`);

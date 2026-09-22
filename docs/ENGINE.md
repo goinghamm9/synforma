@@ -79,7 +79,8 @@ Output: `DiscoveredState[]` (page model + replayable path + revealed groups) and
 - Requirements = numbered/bulleted list items (or obligation sentences). Each gets keywords, a
   `judgment` flag (mentions of decision-maker/buyer/stakeholder/budget/funding/verify/review/approve…),
   and an expectation: accepted values from "(A or B)", rejected values from "(not X)", quoted values,
-  and "within N days".
+  "within N days" / "at least N days" (date horizons) and "N days or less" / "no more than N days" (a
+  capped duration, `atMostDays`).
 - Population from role nouns (account executives, reps, employees…); object hint from "create a … X";
   entry hint from "from a … lead"; policy constraints = sentences with without/never/must not/
   restricted/confidential/policy; success = the sentence mentioning %, sustained, adoption or success.
@@ -143,18 +144,24 @@ whole workflow, `guide` on an action class the contract sets to `never` abandons
 forbids autonomy"). Then for each action: in routine scope, skip actions whose requirement needs
 judgment (`note { skippedJudgment }`) and stop before the commit click (`note { stoppedBeforeCommit }`,
 outcome `completed`, nothing verified). Resolve the live field (re-grounding by meaning if the key is
-gone), resolve the value, perform, emit `action_executed` (+ `action_regrounded`). A field that is not on
-the screen is first looked for behind the best-named opener and the closed tabs; if the form continues
-on later steps of the same route, the fill is carried forward (`note { deferred }`) and retried at the
-start of each later step, so a field the vendor moved to a tab on the review step is still filled. Menu
-items are reached by opening the popup buttons first. If a click does not advance and alerts appear → `validation_error`,
+gone; the requirement's own wording joins the grounding hints, and a candidate is accepted only when it
+is recognisably the same field: a similar name (≥ 50%), the same acronym, or overlapping options, help
+text or hints; one that merely shares a generic word with the old name counts as "not here"), resolve
+the value (an option the requirement names outright wins; a capped duration takes the longest option
+within the cap), perform, emit `action_executed` (+ `action_regrounded`). A field that is not on the
+screen is first looked for behind the best-named opener and the closed tabs; if the form continues on
+later steps of the same route, the fill is carried forward (`note { deferred }`) and retried at the
+start of each later step, so a field the vendor moved to a tab on the review step is still filled. After
+a step, the wizard re-sync moves forward only when the live screen matches this or an earlier step's
+anchor (a real jump back); a screen that matches no known step is a renamed heading and is left alone.
+Menu items are reached by opening the popup buttons first. If a click does not advance and alerts appear → `validation_error`,
 repair invalid fields once (dates → ISO, selects → first real option) and retry. Before a commit click
 with `commits: "ask"` → `approval_requested` with the collected payload; denial → `approval_denied`,
 `run_abandoned`. A failed essential action (navigation, Next, commit) → `run_failed`.
 
 After the last step (unless `steps` was set), the outcome screen is snapshotted and `verifyRequirements`
 checks each requirement against the definition list (label similarity, accepted / rejected values, date
-windows) → `outcome_verified`, then `run_completed` with `requirementsMet`, or `run_failed` when the
+windows, capped durations: the value must state a number of days at or under the cap) → `outcome_verified`, then `run_completed` with `requirementsMet`, or `run_failed` when the
 outcome screen was not reached.
 
 **Ledger provenance.** When the caller passes `ledger: { runId, programId, intent?, decidedBy? }`
