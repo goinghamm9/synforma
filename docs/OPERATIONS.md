@@ -78,7 +78,7 @@ lists them; copy it to `.env.local` for local development and restart the dev se
 | Variable | Effect |
 |---|---|
 | `ANTHROPIC_API_KEY` | Enables the Claude provider. Preferred when both keys are set. |
-| `ANTHROPIC_MODEL` | Claude model id; default `claude-opus-5`. |
+| `ANTHROPIC_MODEL` | Claude model id; default `claude-opus-5`, run at low effort (extraction and mapping tasks). |
 | `GEMINI_API_KEY` | Enables the Gemini provider. |
 | `GEMINI_MODEL` | Gemini model id; default `gemini-2.5-flash`. |
 | `PLANNER_PROVIDER` | `claude` or `gemini`: pin one vendor when both keys are present. |
@@ -88,8 +88,10 @@ lists them; copy it to `.env.local` for local development and restart the dev se
 `GET /api/planner/status` returns `{ configured, provider, model }` and nothing else. `POST
 /api/planner` validates the request and the model's reply against fixed Zod schemas, retries once with a
 corrective instruction, and answers 502 when the provider fails, refuses, or the output fails validation
-twice; 503 when no provider is configured; 504 after 25 s; 429 above 30 requests per minute per
-process. On any non-200 answer the browser client uses the heuristic planner.
+twice; 503 when no provider is configured; 504 after 8 s (under the 10 s function limit of serverless
+hosts such as Netlify's free tier); 429 above 30 requests per minute per process. On any non-200 answer,
+or when no answer arrives within 10 s, the browser client uses the heuristic planner and labels the run
+as a fallback.
 
 ## Verification
 
@@ -103,11 +105,19 @@ npx eslint .
 npm run build
 ```
 
-### Planner providers (no key, no browser)
+### Planner providers and the remote planner client (no key, no browser)
 
 ```bash
 npx --yes tsx@4 verify/provider.spec.ts
+npx --yes tsx@4 verify/remote-planner.spec.ts
+npx --yes tsx@4 verify/text.spec.ts
 ```
+
+`remote-planner.spec.ts` mocks the planner API and verifies the client's deadline (a slow call falls back
+to the heuristic result at the deadline, with the reason in `lastError`) and its additive merging (the
+heuristic requirement list stays; the model adds title, constraints and judgment; a model mapping fills a
+gap but never overrides a confident heuristic mapping). `text.spec.ts` covers acronym-aware matching and
+requirement kinds.
 
 Verifies that every planner task schema survives the structure-only conversion used for Claude's
 structured outputs, that a bad Anthropic key maps to a `ProviderError` of kind `"auth"` without leaking

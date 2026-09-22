@@ -93,7 +93,8 @@ export class IframeDriver {
         resolve();
       };
       this.iframe.addEventListener("load", finish);
-      setTimeout(finish, 8000);
+      // A cold serverless host can take several seconds to answer the first request for a page.
+      setTimeout(finish, 15000);
       this.iframe.src = url;
     });
     await this.waitForSettle(1500);

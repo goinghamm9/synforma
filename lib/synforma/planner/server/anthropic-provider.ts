@@ -40,8 +40,9 @@ export class AnthropicProvider implements LLMProvider {
           max_tokens: MAX_OUTPUT_TOKENS,
           system,
           messages: [{ role: "user", content: user }],
-          // Planning tasks are extraction and mapping, not open-ended reasoning: medium effort keeps latency inside the route's deadline.
-          output_config: { effort: "medium", format: { type: "json_schema", schema: toOutputSchema(schema) } },
+          // Planning tasks are extraction and mapping, not open-ended reasoning. Low effort keeps a call inside the
+          // route's deadline, which on serverless hosts sits under the platform's function limit (10 s on Netlify's free tier).
+          output_config: { effort: "low", format: { type: "json_schema", schema: toOutputSchema(schema) } },
         },
         { signal },
       );
