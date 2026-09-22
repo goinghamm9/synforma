@@ -1,7 +1,7 @@
 // Engine on every target application: discover → plan → Act (v1) → vendor update → Act (v2, self-heal).
 // Run from synforma/: CHROMIUM_PATH=/path/to/chrome node verify/targets.spec.js [crm,billing,data,erp] (dev server on :3000).
 const { chromium } = require("playwright");
-const BASE = "http://localhost:3000";
+const BASE = process.env.BASE_URL || "http://localhost:3000";
 const ids = (process.argv[2] || "crm,billing,data,erp").split(",");
 const inDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 

@@ -20,11 +20,12 @@ Live: **https://synforma.netlify.app** (the production build of `main`).
 | `/graph` | Work Graph as a 2D process map: Workflow, Application, Runs and Evidence lenses, with the 3D scene behind a toggle |
 | `/science` | Barrier model, intervention registry, evidence classes, decision policy, citations |
 | `/settings` | Planner preference, assistance and sensing controls, data export / import / delete |
-| `/sandbox` | The four demo applications, each usable on its own |
+| `/sandbox` | The five demo applications, each usable on its own |
 | `/sandbox/crm` | Meridian CRM (fictional CRM) |
 | `/sandbox/billing` | Ledgerline Billing (billing-dashboard replica) |
 | `/sandbox/data` | Nimbus Data Console (developer-console replica) |
 | `/sandbox/erp` | Atlas ERP (enterprise-ERP replica) |
+| `/sandbox/assistant` | Lumen Workspace (AI-assistant workspace replica) |
 
 Everything runs in the browser against a same-origin iframe. All state lives in localStorage. Nothing
 leaves the browser except calls to the optional planner route.
@@ -61,13 +62,13 @@ requirement list stays the executable contract, the model adds titles, constrain
 fills mapping gaps. It can improve understanding but cannot invent techniques, citations or statistics. Settings → Planner
 chooses Automatic, Heuristic only or Language model.
 
-## Four applications, one engine
+## Five applications, one engine
 
-Mission Control's Connect stage offers four target applications. Every one is a fictional replica of a
+Mission Control's Connect stage offers five target applications. Every one is a fictional replica of a
 category of enterprise software, built for this demonstration and labelled as such in its own footer;
 none contains a connector, a selector or any hook for Synforma. Each ships with an objective, a work
 context, a simulated vendor update (labels, menus, tabs and DOM ids change) and presenter notes.
-`/demo?target=billing` (or `data`, `erp`, `crm`) opens Mission Control on that application.
+`/demo?target=billing` (or `data`, `erp`, `assistant`, `crm`) opens Mission Control on that application.
 
 | Application | Objective | Both UI versions, zero configuration |
 |---|---|---|
@@ -75,6 +76,7 @@ context, a simulated vendor update (labels, menus, tabs and DOM ids change) and 
 | Ledgerline Billing | compliant refund for a disputed charge | 5/5 requirements, self-healed |
 | Atlas ERP | approvable purchase requisition | 5/5 requirements, self-healed |
 | Nimbus Data Console | new table with row level security on and a read-own-rows policy | 5/5 requirements, self-healed |
+| Lumen Workspace | assistant project with approved instructions, a knowledge source, retention within policy and a reviewer | 5/5 requirements, self-healed |
 
 The engine changes that made this possible are generic, not per app: discovery keeps prefilled values,
 retries rejected fields with values derived from the validation message, reads fields behind toggles,
@@ -86,7 +88,7 @@ re-synchronises with a wizard that jumped back and carries a fill forward when t
 field to a later screen of the same form; matching treats an abbreviation as the phrase whose initials
 it spells ("RLS protection" is "Row level security"); and a requirement that names an artifact to create
 ("a policy that allows …") is a field requirement, not a constraint. `node verify/targets.spec.js` runs
-all four.
+all five.
 
 ## Demo in five minutes
 

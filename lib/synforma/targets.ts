@@ -210,7 +210,50 @@ Requesters must not split orders to stay under approval limits. Success is every
   ],
 };
 
-export const TARGET_APPS: readonly TargetApp[] = [CRM, BILLING, ERP, DATA];
+const ASSISTANT: TargetApp = {
+  id: "assistant",
+  name: "Lumen Workspace",
+  status: "preview",
+  category: "AI-assistant workspace",
+  replicaNote: "Fictional replica of an enterprise AI-assistant workspace pattern; not affiliated with any vendor.",
+  version: "2.3",
+  versionV2: "2.4 preview",
+  baseUrl: withBase("/sandbox/assistant"),
+  entryUrl: withBase("/sandbox/assistant/projects"),
+  uiVersionKey: "lumen-ui-version",
+  objective: `I want team leads to create a new assistant project in this workspace with approved instructions from the start.
+
+A correctly created project must have:
+1. A project name
+2. Instructions from an approved template
+3. At least one connected knowledge source
+4. Data retention of 30 days or less
+5. A reviewer assigned
+
+Team leads must not share projects outside the organization. Success is every new project meeting all five requirements.`,
+  context: {
+    entryUrl: withBase("/sandbox/assistant/projects"),
+    projectName: "Support triage helper",
+    purpose: "Drafts first replies to support tickets from the knowledge base",
+    reviewer: "Priya Natarajan — Head of Support",
+  },
+  contextFields: [
+    { key: "entryUrl", label: "Entry page", hint: "URL of the project list to start from" },
+    { key: "projectName", label: "Project name", hint: "Name of the new project" },
+    { key: "purpose", label: "Purpose", hint: "Recorded on the project if the form asks" },
+    { key: "reviewer", label: "Reviewer", hint: "Reviewer to assign, as listed in the workspace" },
+  ],
+  script: [
+    "Connect to an AI-assistant workspace: projects, knowledge sources, members, a four-step wizard.",
+    "Objective: a platform lead's rules for new projects, approved instructions from the start.",
+    "Discover and plan: the New project wizard, its four steps and the Create project commit.",
+    "Run it: name, template, knowledge source, retention and reviewer are filled; creating waits for approval.",
+    "Vendor update: controls are renamed and retention moves into a Governance tab; run again.",
+    "Approved template, connected source, retention within policy, reviewer assigned: five of five verified.",
+  ],
+};
+
+export const TARGET_APPS: readonly TargetApp[] = [CRM, BILLING, ERP, DATA, ASSISTANT];
 /** The applications offered in Mission Control and on the site. */
 export const DEMO_TARGETS: readonly TargetApp[] = TARGET_APPS.filter((t) => t.status === "ready");
 export const DEFAULT_TARGET_ID = CRM.id;
