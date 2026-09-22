@@ -431,7 +431,13 @@ const content = await planner.composeAssistance({ step, workflow, requirements, 
 
 `RemotePlanner` (`planner/remote.ts`) POSTs `{ task: "parseObjective" | "mapFields" | "diagnose" |
 "composeAssistance", ... }` to `/api/planner`, validates the reply with the schemas in
-`planner/protocol.ts`, and returns the heuristic result on any failure (`lastError` says why). Its
+`planner/protocol.ts`, and returns the heuristic result on any failure (`lastError` says why). Every
+call has a client deadline (`REMOTE_DEADLINE_MS`, 10 s): a slow host never stalls a run. The model's
+answer is additive (`mergeParsed`, `applyMappings`): the heuristic's requirement list stays the
+executable contract (ids, wording, expectations) and the model contributes title, population,
+constraints and judgment flags, or the whole list only when the heuristic found none; a model field
+mapping is used only for a real field, at confidence ≥ 0.5, and never over a heuristic mapping that
+scores ≥ 0.5 on its own. `verify/remote-planner.spec.ts` covers these rules with a mocked API. Its
 `kind` is only used for labels and provenance. Templated action values `{{req:r1}}`, `{{req:r5:date}}`,
 `{{field:key}}` are resolved at run time by `resolveValue(action, requirements, context, field)` from
 `@/lib/synforma/planner/heuristic`.
@@ -448,9 +454,11 @@ constraints afterwards); `GeminiProvider` converts it to `responseSchema` (`toGe
 
 Route contract for `POST /api/planner`: 200 `{ result, provider, model, task, attempts }` · 400 malformed
 request · 413 body too large (512 KB) · 429 rate limit (30/min per process) · 502 provider failed,
-refused, or output failed validation twice · 503 no provider configured · 504 deadline (25 s). Output is
-validated with Zod and retried once with a corrective instruction. On anything but 200 the client uses
-the heuristic result.
+refused, or output failed validation twice · 503 no provider configured · 504 deadline (8 s, under the
+10 s function limit of serverless hosts such as Netlify's free tier). Output is validated with Zod and
+retried once with a corrective instruction while the deadline allows. `AnthropicProvider` runs
+`claude-opus-5` at `effort: "low"`: the tasks are extraction and mapping, and low effort keeps a call
+inside the deadline. On anything but 200 the client uses the heuristic result.
 
 ## Runner (Act / Assist / Get It Done) — `@/lib/synforma/engine/runner`
 

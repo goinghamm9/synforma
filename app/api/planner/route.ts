@@ -22,7 +22,9 @@ export const dynamic = "force-dynamic";
 
 const RATE_LIMIT = 30; // requests
 const RATE_WINDOW_MS = 60_000;
-const TIMEOUT_MS = 25_000;
+// Under the synchronous function limit of serverless hosts (10 s on Netlify's free tier): the route answers 504 itself
+// and the client falls back to the heuristic planner, instead of the platform cutting the connection.
+const TIMEOUT_MS = 8_000;
 const MAX_BODY_BYTES = 512 * 1024;
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;

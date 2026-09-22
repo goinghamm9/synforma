@@ -55,8 +55,10 @@ cp .env.example .env.local
 Claude is preferred when both keys are set; `PLANNER_PROVIDER=claude|gemini` pins one. Keys are read
 only on the server (`app/api/planner`). The browser sees `{ configured, provider, model }` from
 `/api/planner/status` and nothing else. Every reply is validated against fixed Zod schemas; a refused or
-malformed reply makes the route answer 502 and the client falls back to the heuristic planner. The model
-can improve understanding but cannot invent techniques, citations or statistics. Settings → Planner
+malformed reply makes the route answer 502 and the client falls back to the heuristic planner, as does
+any call that has not answered within ten seconds. The model's answer is additive: the heuristic's
+requirement list stays the executable contract, the model adds titles, constraints, judgment flags and
+fills mapping gaps. It can improve understanding but cannot invent techniques, citations or statistics. Settings → Planner
 chooses Automatic, Heuristic only or Language model.
 
 ## Four applications, one engine

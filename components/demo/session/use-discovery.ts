@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useSynforma } from "@/lib/synforma/store";
 import { explore, type DiscoveredState } from "@/lib/synforma/engine/explorer";
-import { createPlanner, fetchPlannerStatus, resolvePlannerKind } from "@/lib/synforma/planner";
+import { createPlanner, fetchPlannerStatus, plannerVendor, resolvePlannerKind } from "@/lib/synforma/planner";
 import type { PlannerStatus } from "@/lib/synforma/planner/protocol";
 import { cloneGraph, countByType, createGraph } from "@/lib/synforma/graph/work-graph";
 import type { TargetApp } from "@/lib/synforma/targets";
@@ -73,10 +73,10 @@ export function useDiscovery({ connection, programId, plannerStatus, setPhase, s
           actor: "synforma",
           action: "Program understood",
           programId: prog.id,
-          detail: `${effectiveKind} planner · ${mapped}/${fieldReqs.length} requirements mapped · ${workflow.steps.length} steps${fallback ? ` · Gemini unavailable (${fallback}), heuristic fallback` : ""}`,
+          detail: `${effectiveKind} planner · ${mapped}/${fieldReqs.length} requirements mapped · ${workflow.steps.length} steps${fallback ? ` · ${plannerVendor(kind)} unavailable (${fallback}), heuristic fallback` : ""}`,
         });
         setLiveGraph(cloneGraph(graph));
-        pushDiscoveryLog("done", `${effectiveKind} planner mapped ${mapped}/${fieldReqs.length} requirements into ${workflow.steps.length} steps (workflow v${workflow.version})${fallback ? ` (Gemini unavailable: ${fallback})` : ""}`);
+        pushDiscoveryLog("done", `${effectiveKind} planner mapped ${mapped}/${fieldReqs.length} requirements into ${workflow.steps.length} steps (workflow v${workflow.version})${fallback ? ` (${plannerVendor(kind)} unavailable: ${fallback})` : ""}`);
         setDiscovery((d) => ({ ...d, status: "done", planned: { mapped, total: fieldReqs.length, steps: workflow.steps.length } }));
         setPhase("understand");
       } catch (e) {
