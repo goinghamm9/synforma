@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit -p .",
+    "test:unit": "node scripts/ci/run-unit-specs.mjs",
+    "test:e2e": "node scripts/ci/run-e2e.mjs",
+    "verify": "npm run typecheck && npm run lint && npm run test:unit && npm run build && npm run test:e2e",
     "build:static": "bash scripts/build-static.sh"
   },
   "dependencies": {
@@ -45,6 +49,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   },
   "engines": {

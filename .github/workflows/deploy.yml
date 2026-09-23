@@ -1,0 +1,80 @@
+# Deploys a container image that CI already built and attested. Never builds: what runs is what was tested.
+#
+# Two ways in: publish a GitHub Release (tag v*) to deploy that version to production, or run the workflow by
+# hand for staging or production with any image tag CI produced (sha-<short>, main, v1.2.3).
+#
+# The runtime host is a choice made through repository variables, not code:
+#   DEPLOY_TARGET = fly          FLY_APP = <app name>      secret FLY_API_TOKEN     (Fly.io)
+# Each GitHub Environment ("staging", "production") carries its own variables, secrets and required reviewers,
+# so production deploys wait for an approval and staging does not. docs/OPERATIONS.md, "Pipeline".
+name: Deploy
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy to
+        type: choice
+        options: [staging, production]
+        default: staging
+      image_tag:
+        description: "Image tag in GHCR (sha-<short>, main, v1.2.3). Empty: the tag of this commit or release."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment || 'production' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ inputs.environment || 'production' }}
+      url: ${{ vars.APP_URL }}
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve the image tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then TAG="${{ inputs.image_tag }}";
+          elif [ "${{ github.event_name }}" = "release" ]; then TAG="${{ github.event.release.tag_name }}"; TAG="${TAG#v}";
+          else TAG="sha-$(git rev-parse --short=7 HEAD)"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Deploying $IMAGE:$TAG"
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check that the image exists and carries CI's provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker manifest inspect "$IMAGE:${{ steps.tag.outputs.tag }}" > /dev/null
+          gh attestation verify "oci://$IMAGE:${{ steps.tag.outputs.tag }}" --owner "${{ github.repository_owner }}"
+      - name: Deploy (Fly.io)
+        if: vars.DEPLOY_TARGET == 'fly'
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Release on Fly.io
+        if: vars.DEPLOY_TARGET == 'fly'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --app "${{ vars.FLY_APP }}" --image "$IMAGE:${{ steps.tag.outputs.tag }}" --strategy rolling
+      - name: No deploy target configured
+        if: vars.DEPLOY_TARGET != 'fly'
+        run: |
+          echo "::error::DEPLOY_TARGET is not set for this environment. Set the repository or environment variable DEPLOY_TARGET=fly (with FLY_APP and the FLY_API_TOKEN secret), or add the steps for another host to this workflow. The image $IMAGE:${{ steps.tag.outputs.tag }} exists and is verified; nothing was deployed."
+          exit 1

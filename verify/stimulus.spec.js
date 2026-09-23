@@ -9,7 +9,7 @@ const path = require("path");
 const { chromium } = require("playwright");
 const seed = require("./fixtures/employee-seed.json");
 
-const BASE = "http://localhost:3000";
+const BASE = process.env.BASE_URL || "http://localhost:3000";
 const OUT = path.join(__dirname, "..", ".verify");
 fs.mkdirSync(OUT, { recursive: true });
 const FIXTURE = path.join(__dirname, "fixtures", "stimulus-analysis.example.json");
@@ -118,7 +118,9 @@ const oneLine = (t) => t.replace(/\s*\n\s*/g, " | ");
     await shot(page, "03-removed");
 
     // ───────── Mission Control, advanced Act panel ─────────
-    await page.goto(`${BASE}/demo`, { waitUntil: "networkidle", timeout: 120000 });
+    // Seed from a page that does not hold the Synforma store: /demo connects by itself and would write its own state over
+    // a seed placed while it is open (the employee spec seeds the same way).
+    await page.goto(`${BASE}/sandbox/crm/settings?ui=v1`, { waitUntil: "domcontentloaded", timeout: 120000 });
     await page.evaluate((s) => {
       localStorage.clear();
       localStorage.setItem("meridian-ui-version", "v1");
@@ -143,7 +145,7 @@ const oneLine = (t) => t.replace(/\s*\n\s*/g, " | ");
       };
       localStorage.setItem("synforma-store-v1", JSON.stringify({ state, version: 0 }));
     }, seed);
-    await page.reload({ waitUntil: "networkidle" });
+    await page.goto(`${BASE}/demo`, { waitUntil: "networkidle", timeout: 120000 });
     await page.getByTestId("run-workflow").waitFor({ timeout: 60000 });
     record("advanced view opens the Act panel for the seeded active program", (await page.getByTestId("demo-view-toggle").getAttribute("data-view")) === "advanced" && /Act/.test(await page.locator('nav[aria-label="Phases"] [aria-current="step"]').innerText()));
     const button = page.getByTestId("record-screen");

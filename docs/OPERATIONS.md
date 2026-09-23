@@ -3,8 +3,9 @@
 Deploy, environment, verification, and the privacy, threat and event contracts that operators and
 reviewers need. The product itself is described in `docs/ARCHITECTURE.md` and `docs/ENGINE.md`.
 
-Contents: [Deploy](#deploy) · [Environment variables](#environment-variables) · [Verification](#verification) ·
-[Privacy model](#privacy-model) · [Threat model](#threat-model) · [Event schema](#event-schema)
+Contents: [Deploy](#deploy) · [Environment variables](#environment-variables) · [Pipeline](#pipeline) ·
+[Verification](#verification) · [Privacy model](#privacy-model) · [Threat model](#threat-model) ·
+[Event schema](#event-schema)
 
 ## Deploy
 
@@ -141,26 +142,60 @@ knew (runs), which items of a menu would commit data (discovery, marked at 0.95 
 requirement goes when no field matches its words (planning, 0.8) and whether it needs a person's judgment
 (planning, flag added at 0.9, never removed).
 
+## Pipeline
+
+GitHub is the system of record and GitHub Actions the only pipeline (`.github/workflows/`). Nothing
+depends on a hosting vendor's build; the runtime host is a choice made with variables, not code.
+
+| Workflow | When | What |
+|---|---|---|
+| `ci.yml` | every pull request, every push to `main`, tags `v*` | `static`: `npm run typecheck`, `lint`, `test:unit`, `build`. `e2e (1/4 … 4/4)`: `SYNFORMA_STANDALONE=1 npm run build`, then `scripts/ci/run-e2e.mjs --standalone --shard i/4` runs a time-balanced quarter of the browser specs against the standalone server (the same entry point the container runs); logs and screenshots are uploaded as artifacts. `container`: builds the image on every run; on `main` and on tags pushes it to `ghcr.io/goinghamm9/synforma` (`sha-<short>`, branch, `v1.2.3`, `latest` on `main`) and attaches a signed build provenance attestation (`actions/attest-build-provenance`). |
+| `codeql.yml` | pull requests, `main`, weekly | CodeQL for JavaScript and TypeScript with the security-and-quality suite; findings under Security → Code scanning. |
+| `scorecard.yml` | `main`, weekly | OpenSSF Scorecard: supply-chain hygiene, published to the Scorecard API and to Code scanning. |
+| `deploy.yml` | a published GitHub Release, or by hand | Deploys an image CI already built and attested to a GitHub Environment (`staging`, `production`): checks the image exists, verifies its provenance with `gh attestation verify`, then releases it to the host named by the environment's variables (`DEPLOY_TARGET=fly`, `FLY_APP`, `APP_URL`; secret `FLY_API_TOKEN`). No target configured: the job fails and says so. |
+| `pages.yml` | by hand | The static export to GitHub Pages (no API routes). |
+
+`dependabot.yml` opens weekly update pull requests for npm (minor and patch grouped), GitHub Actions, the
+Docker base image, and the Python service.
+
+**Repository settings that make this real** (Settings → Rules or Branches, once): protect `main`; require
+the status checks `Static checks and unit specs`, `End-to-end (1/4)` … `(4/4)`, `Container image` and
+`Analyze (javascript-typescript)`; require a pull request with one review (CODEOWNERS assigns it);
+enable the merge queue and squash merges; enable secret scanning with push protection and Dependabot
+alerts (Settings → Code security), and leave code scanning's "default setup" off, since `codeql.yml`
+replaces it and the two cannot run together. Create the `staging` and `production` environments (Settings →
+Environments), give `production` required reviewers, and set each one's `DEPLOY_TARGET`, `FLY_APP` and
+`APP_URL` variables and `FLY_API_TOKEN` secret.
+
+**The container** (`Dockerfile`): a multi-stage build (`npm ci`, `SYNFORMA_STANDALONE=1 next build`) into
+`node:22-alpine`, run as a non-root user, health-checked on `/api/planner/status`, configured by
+environment variables at run time only (`.env.example`); no key is ever read at build time. `docker build
+-t synforma:local . && docker run --rm -p 3000:3000 synforma:local` runs it anywhere.
+
+**Release**: tag `v<major>.<minor>.<patch>` on `main` and publish a Release; CI builds and attests the
+image for the tag and `deploy.yml` releases it to `production` after its reviewers approve.
+
 ## Verification
 
-Run everything from `synforma/`.
+Run everything from `synforma/`. `npm run verify` runs all of it in order; CI runs the same commands.
 
 ### Static checks
 
 ```bash
-npx tsc --noEmit -p .
-npx eslint .
-npm run build
+npm run typecheck        # tsc --noEmit -p .
+npm run lint             # eslint
+npm run build            # next build
 ```
 
-### Planner providers and the remote planner client (no key, no browser)
+### Unit specs (no key, no browser)
 
 ```bash
-npx --yes tsx@4 verify/provider.spec.ts
-npx --yes tsx@4 verify/remote-planner.spec.ts
-npx --yes tsx@4 verify/text.spec.ts
-npx --yes tsx@4 verify/decider.spec.ts
+npm run test:unit                       # every verify/*.spec.ts, through scripts/ci/run-unit-specs.mjs
+node scripts/ci/run-unit-specs.mjs decider   # one of them
 ```
+
+`run-unit-specs.mjs` runs each spec with `tsx` and fails the run when a spec exits non-zero, prints a
+`FAIL` line, or does not print its pass marker (`ALL PASS` or `All checks passed`).
 
 `remote-planner.spec.ts` mocks the planner API and verifies the client's deadline (a slow call falls back
 to the heuristic result at the deadline, with the reason in `lastError`) and its additive merging (the
@@ -179,6 +214,24 @@ Verifies that every planner task schema survives the structure-only conversion u
 structured outputs, that a bad Anthropic key maps to a `ProviderError` of kind `"auth"` without leaking
 the key, and that the provider registry prefers Claude, honours `PLANNER_PROVIDER`, and reports
 `"heuristic"` when no key is set.
+
+### Browser specs, all at once
+
+```bash
+npx playwright install --with-deps chromium   # once; or set CHROMIUM_PATH to a Chromium binary
+npm run build && npm run test:e2e             # every verify/*.spec.js against `next start` on :3000
+node scripts/ci/run-e2e.mjs --only demo-simple,graph     # some of them
+node scripts/ci/run-e2e.mjs --shard 2/4                   # the slice CI's second runner takes
+node scripts/ci/run-e2e.mjs --base http://localhost:3000  # a server you started (a dev server works)
+SYNFORMA_STANDALONE=1 npm run build && node scripts/ci/run-e2e.mjs --standalone   # the container's entry point, as CI does
+```
+
+`run-e2e.mjs` starts the server, waits for `/api/planner/status`, runs the specs one after another and
+judges each one the way a reviewer would: the process must exit 0, print no `FAIL` line, print what its
+manifest entry expects (`ACT V2 {"outcome":"completed"` for `engine`, the rollback and privacy lines
+for `epics`, `DO_NOTHING` for `friction`, the summary line of `targets`) and nothing it forbids
+(`[pageerror]`). Every spec's output is kept in `.verify/logs/<name>.log`; CI uploads that directory.
+The sections below describe what each spec exercises.
 
 ### Engine checks (Playwright against a dev server)
 
