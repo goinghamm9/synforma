@@ -63,11 +63,12 @@ jobs:
         run: node scripts/ci/run-e2e.mjs --standalone --shard ${{ matrix.shard }}/4
       - name: Keep the logs and screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: e2e-shard-${{ matrix.shard }}
           path: .verify
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   container:
