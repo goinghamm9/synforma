@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+.verify
+.git
+.github
+docs
+services
+verify
+scripts/build-static.sh
+*.md
+!README.md
+.env*
+netlify.toml

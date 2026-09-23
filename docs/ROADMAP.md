@@ -49,6 +49,44 @@ carried forward to later screens of the same form), not per application.
 - Jev (TypeSafe's System One model) behind one `DecisionProvider` abstraction with two transports, a
   probe endpoint, a Settings section, and the runner's use of a calibrated choice for a field the rules
   cannot place.
+- Foundation for the complete product: GitHub as the system of record and GitHub Actions as the only
+  pipeline (static checks, unit specs, the browser specs sharded across runners against the standalone
+  server, CodeQL, Scorecard, Dependabot); a container image built on every run and published to GitHub
+  Container Registry with a signed build provenance attestation on `main` and on tags; a Deploy workflow
+  driven by GitHub Environments with required reviewers and a host chosen by variables, not code
+  (`CONTRIBUTING.md`, `docs/OPERATIONS.md` "Pipeline").
+
+## The complete product — the order of work
+
+The prototype's limits are one limit: state lives in one browser and the driver lives in an iframe. The
+complete product needs a backend with tenancy, a driver that reaches real applications, and an operating
+discipline around models; everything else hangs off those three. In order:
+
+1. **Foundation** (done in this release): the pipeline, the image, the environments. Every later step
+   ships through it.
+2. **Backend and tenancy** (Phase 2 below): Postgres with row-level security as the privacy firewall, an
+   append-only event store for runs, claims, ledger and contracts, object storage for snapshots, queues
+   for long work; auth built for enterprise from the start (SSO through SAML and OIDC, SCIM, organizations,
+   roles, invitations, audit log, retention); the store migrated from localStorage behind the same
+   interfaces, with import of existing programs.
+3. **Portals**: an admin portal (programs, Work Graph, approvals, contracts, metrics, model policy,
+   billing) and an employee portal (my guidance, my proficiency, what Synforma may and may not do for me,
+   private by construction), two route groups with separate role models; aggregates only for admins,
+   with minimum cohort sizes.
+4. **Memory and model operations**: structural memory (the Work Graph, persisted and versioned),
+   episodic memory (every run's events and ledger, with retention), semantic memory (embeddings of
+   screens, fields and requirements in pgvector, so a second CRM benefits from the first), decision
+   memory (Jev's answers and their outcomes feeding per-application thresholds), personal memory
+   (proficiency and friction history, readable only by the person); a prompt and schema registry with
+   versions, golden-set evals for every planner task run in CI, fallback chains, per-organization model
+   policy with bring-your-own keys, cost and latency budgets, OpenTelemetry traces, a private model
+   option behind the same interface.
+5. **Extension driver** (Phase 3), then **API connectors** (Phase 4).
+6. **Compliance and scale**: SOC 2 controls mapped to the pipeline, SCIM, multi-region only when a
+   customer requires it.
+
+The invariants stay fixed throughout: no covert persuasion, no emotion or trait inference, no raw typed
+text leaving the browser, judgment steps never automated, discovery never committing.
 
 ## Phase 2 — Supabase backend
 

@@ -1,0 +1,37 @@
+# OpenSSF Scorecard: a weekly, public measure of the repository's supply-chain hygiene (branch protection,
+# pinned dependencies, token permissions, dangerous workflows, and more). Results appear under Security.
+name: Scorecard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "41 7 * * 2"
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@v2.4.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard
+          path: results.sarif
+          retention-days: 5
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif

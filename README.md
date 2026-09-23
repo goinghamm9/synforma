@@ -1,5 +1,8 @@
 # Synforma
 
+[![CI](https://github.com/goinghamm9/synforma/actions/workflows/ci.yml/badge.svg)](https://github.com/goinghamm9/synforma/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/goinghamm9/synforma/actions/workflows/codeql.yml/badge.svg)](https://github.com/goinghamm9/synforma/actions/workflows/codeql.yml)
+
 Synforma is a prototype of autonomous digital adoption. Connect a web application it has never seen,
 state an objective in plain language, and it discovers the application, infers the workflow, performs
 it under approval (**Act**), guides people through it (**Guide**), watches where they struggle and
@@ -226,16 +229,17 @@ screens a run showed, the predicted response of an average subject, not measurem
 ## Verification
 
 ```bash
-npx tsc --noEmit -p . && npx eslint . && npm run build
-npx --yes tsx@4 verify/provider.spec.ts   # planner providers and schemas; no key needed
-npx --yes tsx@4 verify/decider.spec.ts    # decision model: transports, reply normalisation, the runner acting on a choice; no credentials needed
-npm run dev                               # in one terminal, port 3000; then, with CHROMIUM_PATH set:
-node verify/engine.spec.js    # discover → plan → act (v1) → act (v2 self-heal) → observe a scripted human
-node verify/friction.spec.js  # friction states, minimal interventions, DO_NOTHING when fluent, no typed values in events
-node verify/epics.spec.js     # evidence + contradictions → STOP, Autonomy Contract, ledger undo, Get It Done, demonstration → workflow
+npm run typecheck && npm run lint && npm run test:unit && npm run build   # static checks and the unit specs (no key, no browser)
+npx playwright install --with-deps chromium                               # once; or set CHROMIUM_PATH
+npm run test:e2e                                                          # every browser spec against a production server
+npm run verify                                                            # all of the above
 ```
 
-Details in `docs/OPERATIONS.md`.
+`node scripts/ci/run-e2e.mjs --only engine,friction,epics` runs the engine checks alone (discover → plan →
+act → self-heal → observe a scripted human; friction states and DO_NOTHING; evidence, contradictions,
+the Autonomy Contract, ledger undo, Get It Done, demonstration → workflow). CI runs the same commands on
+every pull request, builds the container image and publishes it with a signed provenance attestation.
+Details in `docs/OPERATIONS.md` and `CONTRIBUTING.md`.
 
 ## Brand
 
