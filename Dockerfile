@@ -2,7 +2,7 @@
 # Synforma as one container: a Next.js standalone server run by Node as a non-root user. Configuration is
 # environment variables at run time (.env.example); nothing secret is read at build time.
 
-FROM node:22-alpine AS base
+FROM node:25-alpine AS base
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
@@ -17,7 +17,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     SYNFORMA_STANDALONE=1
 RUN npm run build
 
-FROM node:22-alpine AS runner
+FROM node:25-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
